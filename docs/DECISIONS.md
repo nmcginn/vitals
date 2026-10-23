@@ -49,3 +49,7 @@ The usual Go layout puts the binary in `cmd/<name>/`. The spec puts `main.go` at
 ### 11. The spec is committed as `docs/SPEC.md`
 
 The original specification is kept verbatim, as the reference PLAN is derived from. It drops only the author byline, because the repo is public and committed text names no one, and it redraws an embedded diagram that didn't survive export. Gaps the spec leaves open are filled in PLAN and marked **Assumption**.
+
+### 12. staticcheck is built with the toolchain go.mod pins
+
+`go run honnef.co/go/tools/cmd/staticcheck@v0.8.2` switches to go1.26 (the toolchain staticcheck declares), and a staticcheck built that way can't type-check Go 1.27's standard library. The Makefile sets `GOTOOLCHAIN=$(go env GOVERSION)` for that one command, so it builds with the module's go1.27.3. The pin stays at v0.8.2, the latest release. Raising it later is a PR of its own.

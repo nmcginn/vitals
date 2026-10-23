@@ -18,21 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Removed by M0 (decision 3): skip everything until the manifest exists.
-      - id: gate
-        run: |
-          if [ -f go.mod ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No go.mod yet; checks start with M0."
-          fi
-
-      - if: steps.gate.outputs.ready == 'true'
-        uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7
         with: { go-version-file: go.mod }
-      - if: steps.gate.outputs.ready == 'true'
-        run: make check
+      - run: make check
 
   # Darwin code only compiles here (decision 5): cgo against the macOS SDK on arm64.
   macos:
@@ -40,19 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Removed by M0 (decision 3).
-      - id: gate
-        run: |
-          if [ -f go.mod ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No go.mod yet; checks start with M0."
-          fi
-
-      - if: steps.gate.outputs.ready == 'true'
-        uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7
         with: { go-version-file: go.mod }
-      - if: steps.gate.outputs.ready == 'true'
-        env: { CGO_ENABLED: '1' }
+      - env: { CGO_ENABLED: '1' }
         run: make check
