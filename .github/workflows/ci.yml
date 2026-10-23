@@ -32,3 +32,5 @@ jobs:
         with: { go-version-file: go.mod }
       - env: { CGO_ENABLED: '1' }
         run: make check
+      - env: { CGO_ENABLED: '1' }
+        run: go build -o /dev/null .
