@@ -2,7 +2,7 @@
 
 ## Shape
 
-*Intended until M0 lands, then as-built. Update in every PR that adds, moves, or removes a module.*
+*Intended, with the M0 files as-built (`main.go`, `darwin.go`, `darwin_shim.c/.h`, `Makefile`; the shim has one `hw.machine` function until M2). Update in every PR that adds, moves, or removes a module.*
 
 ```
 main.go                       flags, slog, net.Listen, http.Server, signals, graceful shutdown

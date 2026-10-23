@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: the setup PR is open. Nothing is built yet.
-- Next up: M0.
-- Open PRs waiting on review: the setup PR.
+- Current: M0 is open as a PR. Nothing else is built yet.
+- Next up: M1 (needs M0 merged).
+- Open PRs waiting on review: the M0 PR.
 
 ## Open questions for the maintainer
 
@@ -27,20 +27,6 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ---
 
 ## Open
-
-### M0: Bootstrap the toolchain
-
-- [ ] **Make `make check` real, and turn CI on.**
-  *Needs:* nothing.
-  - `go.mod` for module `github.com/nmcginn/vitals` with `go 1.27` and `toolchain go1.27.3` (the current stable patch when M0 runs), and **no `require` lines** (decision 1).
-  - `main.go` with `-version` (prints version, commit, and build date from `-X main.version/commit/date`, defaulting to `dev`/`unknown`) and nothing else yet.
-  - `internal/collector/darwin_shim.c` and `.h` with one function returning `hw.machine` via `sysctlbyname`, and `darwin.go` (`//go:build darwin`) calling it, linking `-framework IOKit -framework CoreFoundation` from the start so the link line is proven.
-  - A `Makefile` with `help`, `run` (`go run . -log-level debug`), `fmt-check` (`gofmt -l .` fails on output), `vet`, `staticcheck` (pinned: `go run honnef.co/go/tools/cmd/staticcheck@<version>`, choosing the latest release that loads Go 1.27, v0.8.2 or later), `test` (`go test -race ./...`), `build-linux` (`CGO_ENABLED=0` for amd64 and arm64 into `dist/`, with `-trimpath` and the ldflags), and `check` chaining them. `make golden` can wait for M1, which has the first golden files.
-  - `.github/workflows/ci.yml`: remove the gate step. Two jobs. `linux` (ubuntu-latest) runs `make check`. `macos` (`macos-15`, arm64) runs `make check` plus `CGO_ENABLED=1 go build` and `go test -race ./...`, which there includes the darwin-tagged tests.
-  - `.gitignore` covers `dist/`.
-  - Smoke tests: a test that builds the binary and runs `-version` (exit 0, output contains `vitals`), and a `//go:build darwin` test that the shim returns `arm64` for `hw.machine` on the arm64 runner.
-
-  *Acceptance:* `make check` passes locally and in CI, on both jobs. The CI gate step is removed, so CI fails on a red check. The session-start hook runs `go mod download` in a cloud session. The smoke test fails if the binary does not start, and the darwin smoke test fails if cgo is not wired (it can't compile without it). `go.mod` has no `require` block. `docs/ARCHITECTURE.md` **Shape** is as-built.
 
 ### M1: The model: types, sampler, store, and JSON
 
@@ -142,7 +128,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 
 ## Done
 
-(Nothing yet.)
+- **M0: Bootstrap the toolchain.** `go.mod` (no requires), `-version` main, the cgo shim proving the darwin link line, `make check`, and ungated two-job CI (decisions 1, 3, 12).
 
 ---
 
