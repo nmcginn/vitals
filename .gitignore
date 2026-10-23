@@ -1,0 +1,14 @@
+# Build output
+/dist/
+/vitals
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
