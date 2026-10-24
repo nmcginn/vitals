@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ func newProcfs(fsys fs.FS) *procfs {
 		OSVersion: p.osVersion(),
 		Kernel:    p.line("proc/sys/kernel/osrelease"),
 		Arch:      runtime.GOARCH,
+		CPUModel:  p.cpuModel(),
 	}
 	return p
 }
@@ -34,11 +36,22 @@ func newProcfs(fsys fs.FS) *procfs {
 func (p *procfs) Static() HostInfo { return p.info }
 
 func (p *procfs) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupCPU, GroupMemory, GroupDisks, GroupNetwork, GroupTemps)}
-	if h, err := p.host(); err != nil {
-		raw.Errors[GroupHost] = err
+	raw := Raw{Errors: pending(GroupMemory, GroupDisks, GroupNetwork, GroupTemps)}
+	// The host and CPU groups both read /proc/stat, which on a big machine is
+	// mostly one long intr line, so it's read once.
+	if stat, err := p.read("proc/stat"); err != nil {
+		raw.Errors[GroupHost], raw.Errors[GroupCPU] = err, err
 	} else {
-		raw.Host = &h
+		if h, err := p.host(stat); err != nil {
+			raw.Errors[GroupHost] = err
+		} else {
+			raw.Host = &h
+		}
+		if c, err := cpuFromStat(stat); err != nil {
+			raw.Errors[GroupCPU] = err
+		} else {
+			raw.CPU = &c
+		}
 	}
 	return raw, nil
 }
@@ -71,7 +84,7 @@ func (p *procfs) fields(name string, n int) ([]string, error) {
 	return f, nil
 }
 
-func (p *procfs) host() (Host, error) {
+func (p *procfs) host(stat string) (Host, error) {
 	var h Host
 	// "350735.47 234388.90": seconds since boot, then idle seconds.
 	f, err := p.fields("proc/uptime", 1)
@@ -96,11 +109,7 @@ func (p *procfs) host() (Host, error) {
 
 	// The kernel's own boot time, rather than now − uptime, which would wobble
 	// by a second between samples.
-	s, err := p.read("proc/stat")
-	if err != nil {
-		return h, err
-	}
-	for l := range strings.Lines(s) {
+	for l := range strings.Lines(stat) {
 		if v, ok := strings.CutPrefix(l, "btime "); ok {
 			sec, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 			if err != nil {
@@ -111,6 +120,79 @@ func (p *procfs) host() (Host, error) {
 		}
 	}
 	return h, errors.New("parsing /proc/stat: no btime line")
+}
+
+// cpuFromStat reads the cpu lines of /proc/stat: the total, then one per online
+// CPU (offline ones have no line). Each is "cpuN user nice system idle iowait
+// irq softirq steal guest guest_nice" in ticks. Older kernels stop after idle.
+// iowait is idle time, and steal is busy: the CPU was taken from this guest.
+// guest and guest_nice are already inside user and nice, so they're skipped.
+func cpuFromStat(stat string) (CPU, error) {
+	var c CPU
+	total := false
+	for l := range strings.Lines(stat) {
+		name, rest, _ := strings.Cut(l, " ")
+		if !strings.HasPrefix(name, "cpu") {
+			continue
+		}
+		f := strings.Fields(rest)
+		if len(f) < 4 {
+			return CPU{}, fmt.Errorf("parsing /proc/stat: %s has %d columns, want at least 4", name, len(f))
+		}
+		var v [8]uint64
+		for i := 0; i < len(f) && i < len(v); i++ {
+			n, err := strconv.ParseUint(f[i], 10, 64)
+			if err != nil {
+				return CPU{}, fmt.Errorf("parsing /proc/stat: %s column %d is %q, not a tick count", name, i+1, f[i])
+			}
+			v[i] = n
+		}
+		t := CPUTicks{Busy: v[0] + v[1] + v[2] + v[5] + v[6] + v[7], Idle: v[3] + v[4]}
+		if name == "cpu" {
+			c.Total, total = t, true
+		} else {
+			c.PerCore = append(c.PerCore, t)
+		}
+	}
+	switch {
+	case !total:
+		return CPU{}, errors.New("parsing /proc/stat: no cpu line")
+	case len(c.PerCore) == 0:
+		return CPU{}, errors.New("parsing /proc/stat: no per-CPU lines")
+	}
+	return c, nil
+}
+
+// cpuModel names the CPU from /proc/cpuinfo's first "model name". arm64
+// kernels print no name, only the implementer and part IDs, so those stand in.
+func (p *procfs) cpuModel() string {
+	s, err := p.read("proc/cpuinfo")
+	if err != nil {
+		return unknownModel
+	}
+	var impl, part string
+	for l := range strings.Lines(s) {
+		k, v, ok := strings.Cut(l, ":")
+		if !ok {
+			continue
+		}
+		// Some Xeons pad the name with runs of spaces.
+		v = strings.Join(strings.Fields(v), " ")
+		switch strings.TrimSpace(k) {
+		case "model name":
+			if v != "" {
+				return v
+			}
+		case "CPU implementer":
+			impl = cmp.Or(impl, v)
+		case "CPU part":
+			part = cmp.Or(part, v)
+		}
+	}
+	if impl != "" && part != "" {
+		return "implementer " + impl + ", part " + part
+	}
+	return unknownModel
 }
 
 // osVersion is PRETTY_NAME from os-release, which lives in /usr/lib when /etc

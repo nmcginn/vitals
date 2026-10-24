@@ -4,6 +4,9 @@
 
 #include "darwin_shim.h"
 
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
+#include <mach/mach.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
 
@@ -17,10 +20,23 @@ static void str(const char *name, char *buf, size_t size) {
 	buf[size - 1] = '\0';
 }
 
+static int32_t i32(const char *name) {
+	int32_t v = 0;
+	size_t len = sizeof v;
+	if (sysctlbyname(name, &v, &len, NULL, 0) != 0) {
+		return 0;
+	}
+	return v;
+}
+
 void vitals_host_static(struct vitals_host_static *out) {
 	str("kern.osproductversion", out->os_version, sizeof out->os_version);
 	str("kern.osrelease", out->kernel, sizeof out->kernel);
 	str("hw.machine", out->machine, sizeof out->machine);
+	str("machdep.cpu.brand_string", out->cpu_model, sizeof out->cpu_model);
+	out->nperflevels = i32("hw.nperflevels");
+	out->perflevel_logical[0] = i32("hw.perflevel0.logicalcpu");
+	out->perflevel_logical[1] = i32("hw.perflevel1.logicalcpu");
 }
 
 int vitals_host(struct vitals_host *out) {
@@ -41,4 +57,68 @@ int vitals_host(struct vitals_host *out) {
 	}
 	out->fscale = la.fscale;
 	return 0;
+}
+
+int vitals_cpu_load(struct vitals_cpu_load *out, int max) {
+	// Each mach_host_self() adds a reference to the send right, and a
+	// reference count that only grows overflows after weeks of 2s ticks.
+	mach_port_t host = mach_host_self();
+	natural_t ncpu = 0;
+	processor_info_array_t info = NULL;
+	mach_msg_type_number_t count = 0;
+	kern_return_t kr = host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &ncpu, &info, &count);
+	mach_port_deallocate(mach_task_self(), host);
+	if (kr != KERN_SUCCESS) {
+		return -1;
+	}
+	processor_cpu_load_info_t load = (processor_cpu_load_info_t)info;
+	for (natural_t i = 0; i < ncpu && i < (natural_t)max; i++) {
+		for (int s = 0; s < CPU_STATE_MAX; s++) {
+			out[i].ticks[s] = load[i].cpu_ticks[s];
+		}
+	}
+	// The kernel mapped this array into our address space; it's ours to free.
+	vm_deallocate(mach_task_self(), (vm_address_t)info, count * sizeof *info);
+	return (int)ncpu;
+}
+
+int vitals_cpu_nodes(struct vitals_cpu_node *out, int max) {
+	io_registry_entry_t cpus = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/cpus");
+	if (cpus == MACH_PORT_NULL) {
+		return -1;
+	}
+	io_iterator_t it = 0;
+	kern_return_t kr = IORegistryEntryGetChildIterator(cpus, kIODeviceTreePlane, &it);
+	IOObjectRelease(cpus);
+	if (kr != KERN_SUCCESS) {
+		return -1;
+	}
+	int n = 0;
+	io_registry_entry_t cpu;
+	while ((cpu = IOIteratorNext(it)) != 0) {
+		if (n < max) {
+			out[n].logical_id = -1;
+			out[n].cluster_type = 0;
+			// The type checks keep a property of an unexpected type from being
+			// read as the wrong struct.
+			CFTypeRef id = IORegistryEntryCreateCFProperty(cpu, CFSTR("logical-cpu-id"), kCFAllocatorDefault, 0);
+			if (id != NULL) {
+				if (CFGetTypeID(id) == CFNumberGetTypeID()) {
+					CFNumberGetValue((CFNumberRef)id, kCFNumberSInt32Type, &out[n].logical_id);
+				}
+				CFRelease(id);
+			}
+			CFTypeRef kind = IORegistryEntryCreateCFProperty(cpu, CFSTR("cluster-type"), kCFAllocatorDefault, 0);
+			if (kind != NULL) {
+				if (CFGetTypeID(kind) == CFDataGetTypeID() && CFDataGetLength((CFDataRef)kind) > 0) {
+					out[n].cluster_type = (char)CFDataGetBytePtr((CFDataRef)kind)[0];
+				}
+				CFRelease(kind);
+			}
+		}
+		n++;
+		IOObjectRelease(cpu);
+	}
+	IOObjectRelease(it);
+	return n;
 }

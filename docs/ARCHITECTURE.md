@@ -2,7 +2,7 @@
 
 ## Shape
 
-*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host group only until M3 to M7), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/healthz`, `/api/v1/stats`, `/api/v1/history`), and `render/json.go` (`JSON`, `History`). Not yet: `filter.go`, the HTML, text, and Prometheus renderers, and `contrib/`. Update in every PR that adds, moves, or removes a module.*
+*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host and CPU groups; the rest arrive in M4 to M7), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/healthz`, `/api/v1/stats`, `/api/v1/history`), and `render/json.go` (`JSON`, `History`). Not yet: `filter.go`, the HTML, text, and Prometheus renderers, and `contrib/`. Update in every PR that adds, moves, or removes a module.*
 
 The complete JSON shape is fixed by the golden file [`internal/render/testdata/darwin_full.json`](../internal/render/testdata/darwin_full.json) (decision 13).
 

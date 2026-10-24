@@ -28,12 +28,16 @@ func pending(groups ...string) map[string]error {
 	return m
 }
 
+// unknownModel is HostInfo.CPUModel when the OS doesn't name the CPU.
+const unknownModel = "unknown"
+
 // Collector is implemented once per OS. Only the sampler goroutine calls it.
 type Collector interface {
 	// Collect returns raw counters and gauges. A failure in one group sets
 	// that group's error and leaves the others populated; the error return is
 	// for when nothing at all could be collected. The caller owns the returned
-	// value: implementations must not retain or reuse its slices.
+	// value: implementations must not retain or reuse its slices, except for
+	// static values they never write again (CPU.Darwin).
 	Collect(ctx context.Context) (Raw, error)
 	// Static returns what doesn't change while the process runs. It is read
 	// once at startup.
@@ -47,7 +51,7 @@ type HostInfo struct {
 	OSVersion string // kern.osproductversion, or PRETTY_NAME; "" if unreadable
 	Kernel    string
 	Arch      string
-	CPUModel  string
+	CPUModel  string // "unknown" when the OS doesn't say
 }
 
 // Raw is one collection. A nil group pointer (or nil slice for disks and
@@ -70,7 +74,9 @@ type Host struct {
 }
 
 // CPU holds cumulative tick counters. Each platform folds its own tick kinds
-// into busy and idle (Linux counts iowait as idle).
+// into busy and idle (Linux counts iowait as idle). Darwin is nil off darwin,
+// and on darwin when the P/E split couldn't be read; Errors then says why
+// while usage is still reported (decision 20).
 type CPU struct {
 	Total   CPUTicks
 	PerCore []CPUTicks

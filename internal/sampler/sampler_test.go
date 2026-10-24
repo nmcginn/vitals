@@ -245,6 +245,27 @@ func TestCPUUsage(t *testing.T) {
 		}
 	})
 
+	t.Run("tick counters that go backwards give null, never a negative or huge usage", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			prev, cur collector.CPUTicks
+		}{
+			{"busy went back", collector.CPUTicks{Busy: 100, Idle: 100}, collector.CPUTicks{Busy: 50, Idle: 300}},
+			{"idle went back", collector.CPUTicks{Busy: 100, Idle: 100}, collector.CPUTicks{Busy: 300, Idle: 50}},
+			// A darwin core's 32-bit counter wrapping, as the collector widens it.
+			{"a 32-bit wrap", collector.CPUTicks{Busy: 1<<32 - 10, Idle: 5}, collector.CPUTicks{Busy: 20, Idle: 15}},
+		} {
+			snap := two(cpuRaw(tc.prev.Busy, tc.prev.Idle, tc.prev, collector.CPUTicks{Busy: 1, Idle: 1}),
+				cpuRaw(tc.cur.Busy, tc.cur.Idle, tc.cur, collector.CPUTicks{Busy: 2, Idle: 2}))
+			if snap.CPU.UsagePct != nil || snap.CPU.PerCorePct[0] != nil {
+				t.Errorf("%s: usage = %s, core 0 = %s, want null", tc.name, f64(snap.CPU.UsagePct), f64(snap.CPU.PerCorePct[0]))
+			}
+			if got := snap.CPU.PerCorePct[1]; got == nil || *got != 50 {
+				t.Errorf("%s: core 1 = %s, want 50 (its counters moved forward)", tc.name, f64(got))
+			}
+		}
+	})
+
 	t.Run("usage stays within 0 to 100 on a single-core machine", func(t *testing.T) {
 		snap := two(cpuRaw(0, 0, collector.CPUTicks{}), cpuRaw(200, 0, collector.CPUTicks{Busy: 200}))
 		if got := snap.CPU.UsagePct; got == nil || *got != 100 {
