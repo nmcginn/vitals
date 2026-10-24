@@ -1,0 +1,82 @@
+{
+  "sampled_at": "2026-10-21T14:02:06Z",
+  "interval_s": 2,
+  "host": {
+    "hostname": "box\u003c\"\u0026\"\u003e",
+    "os": "linux",
+    "os_version": "Debian GNU/Linux 13 (trixie)",
+    "kernel": "6.12.48-amd64",
+    "arch": "amd64",
+    "uptime_s": 4384926,
+    "boot_time": "2026-09-01T08:00:00Z",
+    "load": [
+      1.5,
+      0.75,
+      0.25
+    ]
+  },
+  "cpu": {
+    "usage_pct": 100,
+    "per_core_pct": [
+      100
+    ],
+    "cores": 1,
+    "model": "Intel(R) Celeron(R) N5105 @ 2.00GHz"
+  },
+  "memory": {
+    "total_bytes": 8221089792,
+    "available_bytes": 5368709120,
+    "used_bytes": 2852380672,
+    "swap_total_bytes": 0,
+    "swap_used_bytes": 0
+  },
+  "disks": [
+    {
+      "mount": "/",
+      "device": "/dev/nvme0n1p2",
+      "fs": "ext4",
+      "total_bytes": 250790436864,
+      "used_bytes": 50158087372,
+      "free_bytes": 200632349492,
+      "used_pct": 20,
+      "read_bps": 1536,
+      "write_bps": 204800.5
+    },
+    {
+      "mount": "/srv/media library/archive",
+      "device": "nas:/export",
+      "fs": "nfs4",
+      "total_bytes": 4000787030016,
+      "used_bytes": 3000590272512,
+      "free_bytes": 1000196757504,
+      "used_pct": 75,
+      "read_bps": null,
+      "write_bps": null
+    },
+    {
+      "mount": "/mnt/empty",
+      "device": "/dev/loop9",
+      "fs": "ext4",
+      "total_bytes": 0,
+      "used_bytes": 0,
+      "free_bytes": 0,
+      "used_pct": null,
+      "read_bps": null,
+      "write_bps": null
+    }
+  ],
+  "network": null,
+  "temps": [
+    {
+      "label": "Package id 0",
+      "celsius": 48
+    },
+    {
+      "label": "nvme/temp1",
+      "celsius": 39.85
+    }
+  ],
+  "errors": {
+    "network": "reading /proc/net/dev: permission denied"
+  }
+}
