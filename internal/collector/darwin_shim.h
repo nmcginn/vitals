@@ -3,11 +3,30 @@
 
 #include <stdint.h>
 
-// Read once at startup. Each string is "" when its sysctl failed.
+// Read once at startup. Each string is "" and each number 0 when its sysctl
+// failed.
 struct vitals_host_static {
-	char os_version[32]; // kern.osproductversion, e.g. "26.1"
-	char kernel[32];     // kern.osrelease, e.g. "25.1.0"
-	char machine[32];    // hw.machine, e.g. "arm64"
+	char os_version[32];          // kern.osproductversion, e.g. "26.1"
+	char kernel[32];              // kern.osrelease, e.g. "25.1.0"
+	char machine[32];             // hw.machine, e.g. "arm64"
+	char cpu_model[64];           // machdep.cpu.brand_string, e.g. "Apple M4"
+	int32_t nperflevels;          // hw.nperflevels
+	int32_t perflevel_logical[2]; // hw.perflevel0.logicalcpu, hw.perflevel1.logicalcpu
+};
+
+// More logical CPUs than any Mac has; the buffers below are this long.
+#define VITALS_MAX_CPUS 256
+
+// One core's cumulative ticks from host_processor_info, indexed by
+// CPU_STATE_USER, CPU_STATE_SYSTEM, CPU_STATE_IDLE, and CPU_STATE_NICE.
+struct vitals_cpu_load {
+	uint32_t ticks[4];
+};
+
+// One child of IODeviceTree:/cpus.
+struct vitals_cpu_node {
+	int32_t logical_id; // "logical-cpu-id", or -1 when missing
+	char cluster_type;  // first byte of "cluster-type" ('P' or 'E'), or 0 when missing
 };
 
 // The host group's gauges, copied from kern.boottime and vm.loadavg.
@@ -22,5 +41,14 @@ void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
 int vitals_host(struct vitals_host *out);
+
+// Copies up to max cores' tick counters into out. Returns the number of cores
+// the kernel reported, which may exceed max, or -1 if host_processor_info
+// failed.
+int vitals_cpu_load(struct vitals_cpu_load *out, int max);
+
+// Copies up to max children of IODeviceTree:/cpus into out. Returns the number
+// of children, which may exceed max, or -1 if the registry has no /cpus.
+int vitals_cpu_nodes(struct vitals_cpu_node *out, int max);
 
 #endif

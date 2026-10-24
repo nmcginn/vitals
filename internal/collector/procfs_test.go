@@ -18,7 +18,7 @@ func minimal() fstest.MapFS {
 	return fstest.MapFS{
 		"proc/uptime":               {Data: []byte("1000.00 3000.00\n")},
 		"proc/loadavg":              {Data: []byte("1.00 0.50 0.25 2/200 999\n")},
-		"proc/stat":                 {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
+		"proc/stat":                 {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
 		"proc/sys/kernel/osrelease": {Data: []byte("6.12.48-amd64\n")},
 		"proc/sys/kernel/hostname":  {Data: []byte("box\n")},
 		"etc/os-release":            {Data: []byte("NAME=\"Debian GNU/Linux\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")},
@@ -49,7 +49,8 @@ func collect(t *testing.T, fsys fs.FS) (*procfs, Raw) {
 func TestProcfsHost(t *testing.T) {
 	t.Run("a captured Ubuntu VM gives its static fields, uptime, load, and boot time", func(t *testing.T) {
 		p, raw := collect(t, os.DirFS("testdata/ubuntu-vm"))
-		want := HostInfo{Hostname: "vm", OS: "linux", OSVersion: "Ubuntu 24.04.5 LTS", Kernel: "6.18.44-fc-v153", Arch: runtime.GOARCH}
+		// No /proc/cpuinfo was captured from this VM, so the model is unknown.
+		want := HostInfo{Hostname: "vm", OS: "linux", OSVersion: "Ubuntu 24.04.5 LTS", Kernel: "6.18.44-fc-v153", Arch: runtime.GOARCH, CPUModel: "unknown"}
 		if got := p.Static(); got != want {
 			t.Errorf("Static() = %+v\nwant      %+v", got, want)
 		}
@@ -150,11 +151,129 @@ func TestProcfsHost(t *testing.T) {
 			got[g] = err.Error()
 		}
 		want := map[string]string{}
-		for _, g := range []string{GroupCPU, GroupMemory, GroupDisks, GroupNetwork, GroupTemps} {
+		for _, g := range []string{GroupMemory, GroupDisks, GroupNetwork, GroupTemps} {
 			want[g] = "not implemented yet"
 		}
 		if !maps.Equal(got, want) {
 			t.Errorf("errors = %v\nwant     %v", got, want)
 		}
 	})
+}
+
+func TestProcfsCPU(t *testing.T) {
+	cpuStat := func(lines ...string) fs.FS {
+		return with(map[string]string{"proc/stat": strings.Join(lines, "\n") + "\nbtime 1700000000\n"})
+	}
+
+	t.Run("an 8-core x86 machine gives the total and eight cores, iowait counted as idle", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/x86-8core"))
+		if err := raw.Errors[GroupCPU]; err != nil || raw.CPU == nil {
+			t.Fatalf("cpu error %v", err)
+		}
+		// cpu  1692629 3933 433525 40163676 40209 0 25855 0 0 0
+		if want := (CPUTicks{Busy: 1692629 + 3933 + 433525 + 25855, Idle: 40163676 + 40209}); raw.CPU.Total != want {
+			t.Errorf("total = %+v, want %+v", raw.CPU.Total, want)
+		}
+		if len(raw.CPU.PerCore) != 8 {
+			t.Fatalf("got %d cores, want 8", len(raw.CPU.PerCore))
+		}
+		// cpu0 194865 196 40860 5080411 8957 0 3761 0 0 0
+		if want := (CPUTicks{Busy: 194865 + 196 + 40860 + 3761, Idle: 5080411 + 8957}); raw.CPU.PerCore[0] != want {
+			t.Errorf("cpu0 = %+v, want %+v", raw.CPU.PerCore[0], want)
+		}
+		if raw.CPU.Darwin != nil {
+			t.Errorf("darwin = %+v on Linux, want nil", raw.CPU.Darwin)
+		}
+	})
+
+	t.Run("the captured Ubuntu VM has four cores", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/ubuntu-vm"))
+		if raw.CPU == nil || len(raw.CPU.PerCore) != 4 {
+			t.Fatalf("cpu = %+v, error %v; want four cores", raw.CPU, raw.Errors[GroupCPU])
+		}
+	})
+
+	t.Run("steal counts as busy, and guest time, already inside user, is not counted twice", func(t *testing.T) {
+		//                user nice system idle iowait irq softirq steal guest guest_nice
+		_, raw := collect(t, cpuStat("cpu  100 10 20 500 5 1 2 30 80 4", "cpu0 100 10 20 500 5 1 2 30 80 4"))
+		if want := (CPUTicks{Busy: 100 + 10 + 20 + 1 + 2 + 30, Idle: 505}); raw.CPU == nil || raw.CPU.Total != want {
+			t.Errorf("total = %+v, want %+v", raw.CPU, want)
+		}
+	})
+
+	t.Run("a kernel that prints only four columns still parses", func(t *testing.T) {
+		_, raw := collect(t, cpuStat("cpu  1 2 3 4", "cpu0 1 2 3 4"))
+		if want := (CPUTicks{Busy: 6, Idle: 4}); raw.CPU == nil || raw.CPU.PerCore[0] != want {
+			t.Errorf("cpu0 = %+v, want %+v", raw.CPU, want)
+		}
+	})
+
+	t.Run("a single-core machine has one core", func(t *testing.T) {
+		_, raw := collect(t, cpuStat("cpu  7 0 3 90 0 0 0 0 0 0", "cpu0 7 0 3 90 0 0 0 0 0 0"))
+		if raw.CPU == nil || len(raw.CPU.PerCore) != 1 || raw.CPU.PerCore[0] != (CPUTicks{Busy: 10, Idle: 90}) {
+			t.Errorf("cpu = %+v, want one core {10 90}", raw.CPU)
+		}
+	})
+
+	t.Run("offline CPUs are missing from /proc/stat, and the online ones are listed in order", func(t *testing.T) {
+		_, raw := collect(t, cpuStat("cpu  3 0 0 30 0 0 0 0 0 0", "cpu0 1 0 0 10 0 0 0 0 0 0", "cpu1 1 0 0 10 0 0 0 0 0 0", "cpu3 1 0 0 10 0 0 0 0 0 0"))
+		if raw.CPU == nil || len(raw.CPU.PerCore) != 3 {
+			t.Errorf("cpu = %+v, error %v; want the three online cores", raw.CPU, raw.Errors[GroupCPU])
+		}
+	})
+
+	for _, tc := range []struct {
+		name, want string
+		fsys       fs.FS
+	}{
+		{"a malformed cpu line fails the cpu group and names the line", "cpu1", cpuStat("cpu  1 2 3 4", "cpu0 1 2 3 4", "cpu1 1 2 x 4")},
+		{"a cpu line with too few columns is an error", "cpu0", cpuStat("cpu  1 2 3 4", "cpu0 1 2 3")},
+		{"no total cpu line is an error", "no cpu line", cpuStat("cpu0 1 2 3 4")},
+		{"no per-CPU lines is an error", "no per-CPU", cpuStat("cpu  1 2 3 4")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, raw := collect(t, tc.fsys)
+			err := raw.Errors[GroupCPU]
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "/proc/stat") {
+				t.Errorf("err = %v, want one naming /proc/stat and %q", err, tc.want)
+			}
+			if raw.CPU != nil {
+				t.Errorf("cpu = %+v, want nil for a failed group", raw.CPU)
+			}
+			if raw.Host == nil {
+				t.Errorf("host group failed too: %v", raw.Errors[GroupHost])
+			}
+		})
+	}
+
+	t.Run("an unreadable /proc/stat fails both groups that read it", func(t *testing.T) {
+		_, raw := collect(t, with(nil, "proc/stat"))
+		if raw.Errors[GroupCPU] == nil || raw.Errors[GroupHost] == nil {
+			t.Errorf("errors = %v, want host and cpu", raw.Errors)
+		}
+	})
+}
+
+func TestProcfsCPUModel(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		fsys       fs.FS
+	}{
+		{"x86 names the model from model name", "Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz", os.DirFS("testdata/x86-8core")},
+		{"arm64 has no model name, so the implementer and part IDs stand in", "implementer 0x41, part 0xd0c", os.DirFS("testdata/arm64-graviton2")},
+		{"runs of spaces in model name are collapsed", "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz",
+			with(map[string]string{"proc/cpuinfo": "processor\t: 0\nmodel name\t: Intel(R) Xeon(R) CPU           E5-2670 0 @ 2.60GHz  \n"})},
+		{"neither model name nor implementer gives unknown", "unknown", with(map[string]string{"proc/cpuinfo": "processor\t: 0\nBogoMIPS\t: 50.00\n"})},
+		{"an unreadable /proc/cpuinfo gives unknown, not an error", "unknown", minimal()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, raw := collect(t, tc.fsys)
+			if got := p.Static().CPUModel; got != tc.want {
+				t.Errorf("model = %q, want %q", got, tc.want)
+			}
+			if tc.want == "unknown" && raw.Errors[GroupCPU] != nil {
+				t.Errorf("cpu error %v, want none for an unknown model", raw.Errors[GroupCPU])
+			}
+		})
+	}
 }

@@ -14,27 +14,19 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M2 merged. The darwin shim now has its own lint, analyzer, and sanitizer pass in `make check` (decision 19).
-- Next up: M3.
-- Open PRs waiting on review: the shim-check PR.
+- Current: M3 (CPU) in review.
+- Next up: M4.
+- Open PRs waiting on review: the M3 CPU PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **The line budget.** After M2, non-test Go is 1,001 lines (plus a 67-line shim), against the spec's "roughly 1,000 to 1,200" for all of v1. Five groups on two platforms and three renderers remain; at the pace so far v1 lands nearer 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M3 onwards should squeeze.
+- **The line budget.** After M3, non-test Go is 1,250 lines (plus a 178-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Four groups on two platforms and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M4 onwards should squeeze.
 
 ---
 
 ## Open
-
-### M3: CPU
-
-- [ ] **Total and per-core CPU usage, with the P/E split on Apple Silicon.**
-  *Needs:* M2.
-  Darwin: `host_processor_info(PROCESSOR_CPU_LOAD_INFO)` tick counters per core (copied and then freed with `vm_deallocate` in the shim), `machdep.cpu.brand_string`, `hw.perflevel0/1.logicalcpu`, and per-core kind from `IODeviceTree:/cpus/cpuN` `cluster-type` (see the P/E tagging assumption in PLAN). Linux: `/proc/stat` per-CPU jiffies and `/proc/cpuinfo` model name. Usage % is computed in the sampler from tick deltas.
-
-  *Acceptance:* sampler tests show usage is busy-delta ÷ total-delta × 100, within 0 to 100. A core whose total delta is 0 gives `null`, not NaN. Tick counters that go backwards give `null`. Linux fixtures cover an 8-core x86 `/proc/stat`, a single-core machine, an arm64 `/proc/cpuinfo` with no `model name` line (model falls back to `CPU implementer`/`CPU part` or `"unknown"`, never an error), and offline CPUs missing from `/proc/stat`. Darwin conversion tests (on Linux) cover tagging from a 4P+6E fixture and from a single-perflevel fixture (all one kind, `e_cores` 0). The darwin integration test checks that `p_cores + e_cores == cores`, that `len(core_kinds) == cores`, and that per-core usage is within 0 to 100 on the second sample. *(maintainer)* the Mini shows the correct P and E split for its chip.
 
 ### M4: Memory
 
@@ -115,6 +107,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M0: Bootstrap the toolchain.** `go.mod` (no requires), `-version` main, the cgo shim proving the darwin link line, `make check`, and ungated two-job CI (decisions 1, 3, 12).
 - **M1: The model.** `collector.Raw`/`HostInfo`, `Snapshot` with nullable rates, the sampler (80% timeout, skip-on-overrun, rates over actual elapsed time), the ring buffer and `Store`, `render.JSON` with goldens, and `make golden` (decisions 13, 14, 15).
 - **M2: First light.** The host group on darwin (shim + `darwin_conv.go`) and Linux (`procfs.go` over `fs.FS`), `main.go` with every flag, the hardened server, `internal/server` with `/healthz`, `/api/v1/stats`, and `/api/v1/history` (decisions 16, 17, 18).
+- **M3: CPU.** Total and per-core usage on both platforms, the model name, and the darwin P/E split from `IODeviceTree:/cpus` checked against `hw.perflevel` (decisions 20, 21).
 
 ---
 
