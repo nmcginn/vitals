@@ -14,27 +14,19 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M0 merged. M1 (the model) is open as a PR.
-- Next up: M2 (needs M1 merged).
-- Open PRs waiting on review: the M1 PR.
+- Current: M1 merged. M2 (first light) is open as a PR.
+- Next up: M3 (needs M2 merged).
+- Open PRs waiting on review: the M2 PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- (none open.)
+- **The line budget.** After M2, non-test Go is 1,001 lines (plus a 67-line shim), against the spec's "roughly 1,000 to 1,200" for all of v1. Five groups on two platforms and three renderers remain; at the pace so far v1 lands nearer 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M3 onwards should squeeze.
 
 ---
 
 ## Open
-
-### M2: First light: host metrics, served
-
-- [ ] **`vitals` runs on the Mac and Linux and serves host vitals over HTTP.**
-  *Needs:* M1.
-  The host group on both platforms. Darwin uses sysctl `kern.osproductversion`, `kern.osrelease`, `hw.machine`, `kern.boottime`, and `vm.loadavg` through the shim, with conversion in `darwin_conv.go`. Linux uses `/proc/sys/kernel/osrelease`, `/proc/uptime`, `/proc/loadavg`, and `/etc/os-release`, read through `fs.FS`. `main.go` gets every flag from PLAN with validation (exit status 2 and a message naming the flag), `log/slog` at `-log-level`, `net.Listen` (logging the actual bound address at `info`, so `-listen 127.0.0.1:0` is usable), `http.Server` with the exact timeouts and `MaxHeaderBytes` from PLAN, the non-loopback `warn` line, and graceful shutdown on `SIGINT`/`SIGTERM` (stop the sampler, then `Shutdown` with a 5s deadline). `internal/server.New(store, opts)` with `/healthz`, `/api/v1/stats` (JSON only until M10), and `/api/v1/history` (`?since=`), the common security and cache headers, and `405` with `Allow: GET, HEAD`. Other groups report "not implemented" in `errors` until their milestone lands.
-
-  *Acceptance:* Linux host parsing is tested against fixtures, including a `/proc/uptime` with fractional seconds and a missing `/etc/os-release` (field omitted, no error). Darwin conversion of the boottime timeval and the loadavg fixed-point struct is tested on Linux. The darwin integration test (macOS CI) calls `Collect` twice: uptime > 0, the boot time is in the past, load averages ≥ 0, and the second uptime ≥ the first. Server tests via `httptest`: `/healthz` is `503 no sample yet` before the first sample and `200 ok` after. `HEAD` returns headers and no body. `POST` returns `405` with `Allow`. Every response carries `Cache-Control: no-store`, `nosniff`, and `no-referrer`. `?since=` filters history, and `?since=abc` is `400`. Flag tests: `-interval 500ms`, `-history 1s` with `-interval 2s`, a bad regex, and an unknown `-log-level` each exit 2 with a message naming the flag. `-listen 0.0.0.0:0` logs exactly one warn line, and `127.0.0.1:0` and `[::1]:0` log none. A test starts the real binary on `127.0.0.1:0` and sees `/healthz` turn `200` within two intervals. *(maintainer)* `make run` on the Mini, then `curl localhost:9110/api/v1/stats` shows the host group.
 
 ### M3: CPU
 
@@ -122,6 +114,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 
 - **M0: Bootstrap the toolchain.** `go.mod` (no requires), `-version` main, the cgo shim proving the darwin link line, `make check`, and ungated two-job CI (decisions 1, 3, 12).
 - **M1: The model.** `collector.Raw`/`HostInfo`, `Snapshot` with nullable rates, the sampler (80% timeout, skip-on-overrun, rates over actual elapsed time), the ring buffer and `Store`, `render.JSON` with goldens, and `make golden` (decisions 13, 14, 15).
+- **M2: First light.** The host group on darwin (shim + `darwin_conv.go`) and Linux (`procfs.go` over `fs.FS`), `main.go` with every flag, the hardened server, `internal/server` with `/healthz`, `/api/v1/stats`, and `/api/v1/history` (decisions 16, 17, 18).
 
 ---
 

@@ -34,6 +34,6 @@ jobs:
       # see, so a restored cache would report a pass without running them.
       - env: { CGO_ENABLED: '1', GOFLAGS: '-count=1' }
         run: make check
-      # ./..., not .: main doesn't import the collector yet, so `.` skips the cgo.
+      # Builds every package with cgo, test-only ones included.
       - env: { CGO_ENABLED: '1' }
         run: go build ./...

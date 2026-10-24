@@ -5,7 +5,36 @@
 #include "darwin_shim.h"
 
 #include <sys/sysctl.h>
+#include <sys/time.h>
 
-int vitals_hw_machine(char *buf, size_t len) {
-	return sysctlbyname("hw.machine", buf, &len, NULL, 0) == 0 ? 0 : -1;
+static void str(const char *name, char *buf, size_t len) {
+	if (sysctlbyname(name, buf, &len, NULL, 0) != 0) {
+		buf[0] = '\0';
+	}
+}
+
+void vitals_host_static(struct vitals_host_static *out) {
+	str("kern.osproductversion", out->os_version, sizeof out->os_version);
+	str("kern.osrelease", out->kernel, sizeof out->kernel);
+	str("hw.machine", out->machine, sizeof out->machine);
+}
+
+int vitals_host(struct vitals_host *out) {
+	struct timeval tv;
+	size_t len = sizeof tv;
+	if (sysctlbyname("kern.boottime", &tv, &len, NULL, 0) != 0) {
+		return -1;
+	}
+	struct loadavg la;
+	len = sizeof la;
+	if (sysctlbyname("vm.loadavg", &la, &len, NULL, 0) != 0) {
+		return -2;
+	}
+	out->boot_sec = tv.tv_sec;
+	out->boot_usec = tv.tv_usec;
+	for (int i = 0; i < 3; i++) {
+		out->ldavg[i] = la.ldavg[i];
+	}
+	out->fscale = la.fscale;
+	return 0;
 }

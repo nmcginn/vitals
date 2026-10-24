@@ -185,3 +185,41 @@ func TestJSONShape(t *testing.T) {
 		}
 	})
 }
+
+func TestHistory(t *testing.T) {
+	t.Run("no history is an empty array, not null", func(t *testing.T) {
+		for _, h := range [][]*sampler.Snapshot{nil, {}} {
+			b, err := History(h, false)
+			if err != nil || string(b) != "[]\n" {
+				t.Errorf("History(%v) = %q, %v; want \"[]\\n\"", h, b, err)
+			}
+		}
+	})
+
+	t.Run("history is an array of snapshots in the stats shape, in the order given", func(t *testing.T) {
+		b, err := History([]*sampler.Snapshot{darwinFirst(), darwinFull()}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, full := mustJSON(t, darwinFirst(), false), mustJSON(t, darwinFull(), false)
+		want := "[" + strings.TrimSpace(string(first)) + "," + strings.TrimSpace(string(full)) + "]\n"
+		if string(b) != want {
+			t.Errorf("History =\n%s\nwant\n%s", b, want)
+		}
+	})
+
+	t.Run("pretty history decodes to the same value as compact", func(t *testing.T) {
+		h := []*sampler.Snapshot{darwinFull(), linuxPartial()}
+		compact, _ := History(h, false)
+		pretty, _ := History(h, true)
+		var a, b any
+		if json.Unmarshal(compact, &a) != nil || json.Unmarshal(pretty, &b) != nil {
+			t.Fatal("history is not valid JSON")
+		}
+		ab, _ := json.Marshal(a)
+		bb, _ := json.Marshal(b)
+		if !bytes.Equal(ab, bb) || !bytes.Contains(pretty, []byte("\n  {")) {
+			t.Errorf("pretty history differs from compact or isn't indented:\n%s", pretty)
+		}
+	})
+}

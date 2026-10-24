@@ -65,3 +65,15 @@ The sampler calls `Collect` with a context that expires at 80% of the interval. 
 ### 15. Gauges pass through in collector types
 
 Memory, the darwin CPU fields, and temperatures need no math, so the snapshot uses the collector's structs, which carry their JSON tags, instead of copying them into twin types. Groups with rates (host, CPU, disks, network) have their own snapshot types. To let untagged Go in `internal/collector` build on Linux, `darwin_shim.c` carries `//go:build darwin`.
+
+### 16. Boot time comes from the kernel; darwin uptime counts from it
+
+Linux reads `btime` from `/proc/stat` for `boot_time` and `/proc/uptime` for `uptime_s`. Deriving boot time as now − uptime would wobble by a second between samples (and in `vitals_boot_time_seconds`). darwin has `kern.boottime` but no uptime sysctl that matches `uptime` or Activity Monitor, so `darwin_conv.go` computes uptime as now − boot time, in whole seconds. A boot time that isn't in the past, or a `vm.loadavg` fscale of 0, fails the host group rather than reporting a nonsense uptime or an infinite load. Hostname on Linux is `/proc/sys/kernel/hostname` (read through the same `fs.FS`); on darwin it's `os.Hostname`. Static fields that can't be read are left empty, not errors.
+
+### 17. API edge cases: 503 before the first sample, `?since` is exclusive
+
+`/api/v1/stats` before the first sample answers `503 no sample yet`, like `/healthz`, since there is no snapshot to render. `/api/v1/history` before it is `200 []`. `?since=<unix seconds>` keeps samples taken strictly after that second, so a client polling with the last `sampled_at` it saw gets each sample once. It must be a whole number (`?since=1.5` is `400`); an empty `?since=` means no filter. `?pretty=1` indents both JSON endpoints. Unrouted paths are the standard `404`. Every response, errors included, carries `Cache-Control: no-store`, `nosniff`, and `no-referrer`.
+
+### 18. Unbuilt groups are errors until their milestone lands
+
+Until M3 to M7 land, `cpu`, `memory`, `disks`, `network`, and (on Linux) `temps` are `null` with `"not implemented yet"` in `errors`, and the sampler logs each once a minute at `warn`, like any failing group. On darwin `temps` is simply `null` with no error, which is its v1 behaviour. Each milestone deletes its group from `pending(…)` in its platform's `Collect`. `-disk-exclude` and `-net-exclude` are parsed and validated now, and wired to collectors in M6 and M5.
