@@ -31,7 +31,7 @@ See `docs/ARCHITECTURE.md` for the module map.
 
 - `go mod download`: install dependencies (there are none, so this checks `go.mod` and fetches the pinned toolchain)
 - `make run`: run it locally at `-log-level debug`
-- `make check`: everything CI runs. **Must pass before anything is pushed.** It runs gofmt, `go vet`, staticcheck (pinned), `go test -race ./...`, and static Linux builds.
+- `make check`: everything CI runs. **Must pass before anything is pushed.** It runs gofmt, `go vet`, staticcheck (pinned), `go test -race ./...`, `make shim-check` (on a Mac: clang warnings, the static analyzer, and ASan/UBSan over the C shim), and static Linux builds.
 - `make build`: release binaries into `dist/`. Both Linux binaries build anywhere, and the darwin binary builds only on a Mac.
 - `make golden`: regenerate renderer golden files (`go test ./internal/render -update`). Review the diff before committing.
 
