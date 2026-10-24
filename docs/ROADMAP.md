@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M0 is open as a PR. Nothing else is built yet.
-- Next up: M1 (needs M0 merged).
-- Open PRs waiting on review: the M0 PR.
+- Current: M0 merged. M1 (the model) is open as a PR.
+- Next up: M2 (needs M1 merged).
+- Open PRs waiting on review: the M1 PR.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ---
 
 ## Open
-
-### M1: The model: types, sampler, store, and JSON
-
-- [ ] **Every number has a home, and rates are computed once, correctly, from raw counters.**
-  *Needs:* M0.
-  `collector.Raw` (cumulative counters and gauges for all six groups, per-group errors, darwin-only fields) and `HostInfo`. The `Snapshot` types, with nullable rates (pointers or an explicit "unknown"). The sampler: ticker, `Collect` with a timeout of 80% of the interval, skip-on-overrun, deltas over actual elapsed time from an injected clock, and building the immutable snapshot. The fixed-capacity ring buffer and `Store` (latest snapshot plus a copied history slice). `render/json.go` producing the documented shape, with `?pretty=1` indentation as a renderer option. `make golden` arrives with the first golden file.
-
-  *Acceptance:* with a fake collector and fake clock, tests show the following. The first sample's rates are `null` in JSON. A counter that goes backwards (a reset, or a 32-bit wrap simulated at 2³²) gives `null` for that rate, never a negative number. Rates divide by the actual elapsed time (a 3.1s gap at a 2s interval gives bytes ÷ 3.1). A collection that overruns its 80% timeout skips the tick and doesn't queue another. One group's error lands in `errors` while the other groups are populated. The ring buffer at capacity 450 evicts the oldest first. History returned to callers is a copy, so mutating it doesn't affect the store (checked under `-race`). The JSON golden file matches every field and key name in the PLAN example, plus the documented additions, including `"temps": null` and `"errors": {}`. Capacity = history ÷ interval is a tested pure function (15m ÷ 2s = 450).
 
 ### M2: First light: host metrics, served
 
@@ -129,6 +121,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ## Done
 
 - **M0: Bootstrap the toolchain.** `go.mod` (no requires), `-version` main, the cgo shim proving the darwin link line, `make check`, and ungated two-job CI (decisions 1, 3, 12).
+- **M1: The model.** `collector.Raw`/`HostInfo`, `Snapshot` with nullable rates, the sampler (80% timeout, skip-on-overrun, rates over actual elapsed time), the ring buffer and `Store`, `render.JSON` with goldens, and `make golden` (decisions 13, 14, 15).
 
 ---
 

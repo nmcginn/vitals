@@ -4,7 +4,7 @@ A tiny, read-only system monitor for one machine. It's built for a Mac Mini, and
 
 `vitals` is a single Go binary that reports the vital statistics of the host it runs on: CPU (with Apple Silicon's performance and efficiency cores), memory (with macOS memory pressure, wired, and compressed), disks, network, and, on Linux, temperatures. It serves them as a JavaScript-free HTML dashboard, JSON, plain text that reads well at 80 columns, and Prometheus metrics. It has no dependencies to install and no config file. It listens on loopback by default, and aims to stay under 20 MB of memory and 1% of one core.
 
-> **Status: bootstrapping.** The toolchain, CI, and `-version` exist; the metrics are being built one reviewed pull request at a time. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: bootstrapping.** The toolchain, CI, `-version`, and the internal model (sampler, rate math, history, JSON) exist, but nothing is served yet; the metrics are being built one reviewed pull request at a time. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Development
 
@@ -12,6 +12,7 @@ A tiny, read-only system monitor for one machine. It's built for a Mac Mini, and
 go mod download
 make run
 make check     # everything CI runs; run before pushing
+make golden    # regenerate renderer golden files; review the diff
 ```
 
 These need Go 1.27, pinned in `go.mod` (with `GOTOOLCHAIN=auto`, the default, any recent Go fetches it). Building the macOS binary needs a Mac with the Xcode Command Line Tools, because the darwin collector uses cgo against system frameworks. The Linux binaries are static and build anywhere.

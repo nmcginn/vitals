@@ -7,7 +7,7 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: help run fmt-check vet staticcheck test build-linux check
+.PHONY: help run fmt-check vet staticcheck test golden build-linux check
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*## /\t/'
@@ -28,6 +28,9 @@ staticcheck: ## staticcheck, pinned
 
 test: ## Tests with the race detector
 	go test -race ./...
+
+golden: ## Regenerate renderer golden files; review the diff before committing
+	go test ./internal/render -update
 
 build-linux: ## Static Linux binaries into dist/
 	@mkdir -p dist
