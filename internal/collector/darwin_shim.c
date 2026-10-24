@@ -1,3 +1,7 @@
+//go:build darwin
+
+// Excluded elsewhere so the untagged Go files in this package build on Linux.
+
 #include "darwin_shim.h"
 
 #include <sys/sysctl.h>

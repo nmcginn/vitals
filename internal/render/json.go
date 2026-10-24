@@ -1,0 +1,26 @@
+// Package render turns snapshots into bytes, one pure function per format. No
+// clock, no store, no net/http: same input, same bytes.
+package render
+
+import (
+	"encoding/json"
+
+	"github.com/nmcginn/vitals/internal/sampler"
+)
+
+// JSON renders a snapshot in the shape PLAN documents. The field names live in
+// the snapshot's struct tags; testdata/*.json pins them. pretty indents by two
+// spaces for ?pretty=1. Output ends with a newline either way, for curl.
+func JSON(s *sampler.Snapshot, pretty bool) ([]byte, error) {
+	var b []byte
+	var err error
+	if pretty {
+		b, err = json.MarshalIndent(s, "", "  ")
+	} else {
+		b, err = json.Marshal(s)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}

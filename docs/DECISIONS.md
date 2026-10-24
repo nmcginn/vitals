@@ -53,3 +53,15 @@ The original specification is kept verbatim, as the reference PLAN is derived fr
 ### 12. staticcheck is built with the toolchain go.mod pins
 
 `go run honnef.co/go/tools/cmd/staticcheck@v0.8.2` switches to go1.26 (the toolchain staticcheck declares), and a staticcheck built that way can't type-check Go 1.27's standard library. The Makefile sets `GOTOOLCHAIN=$(go env GOVERSION)` for that one command, so it builds with the module's go1.27.3. The pin stays at v0.8.2, the latest release. Raising it later is a PR of its own.
+
+### 13. Snapshot nulls: unknown is null, missing is null, empty is `[]`
+
+A value that can't be known is a nil pointer and renders as `null`: every rate on the first sample, after a backwards counter, or across a zero elapsed time; `used_pct` of a zero-size filesystem; CPU usage over zero ticks. A group the collector couldn't read is `null` as a whole (`"network": null` with its message in `errors`), but a filtered-out list is `[]`. The host object always keeps its static fields (hostname, OS, kernel, arch), so a failed host group only nulls `uptime_s`, `boot_time`, and `load`. Per-core usage is `null` for a sample where the core count changed, because offline cores renumber the rest. `temps` entries are `{"label", "celsius"}`, which PLAN left open. Timestamps are truncated to whole seconds; rates are unrounded floats. The shape is pinned by `internal/render/testdata/*.json` and a test that compares its keys with the PLAN example.
+
+### 14. An overrun or failed collection publishes nothing
+
+The sampler calls `Collect` with a context that expires at 80% of the interval. If that deadline has passed when `Collect` returns, the result is discarded and the ticker is reset, so a tick that came due during the stall doesn't fire straight after it (a Go ticker otherwise delivers one pending tick). A `Collect` error (nothing at all collected) also skips the tick. Either way the previous good sample stays the baseline, so the next rate spans the gap over the actual elapsed time. Collectors must honour the context: the sampler never runs two collections at once. The sample time is taken just before `Collect` is called.
+
+### 15. Gauges pass through in collector types
+
+Memory, the darwin CPU fields, and temperatures need no math, so the snapshot uses the collector's structs, which carry their JSON tags, instead of copying them into twin types. Groups with rates (host, CPU, disks, network) have their own snapshot types. To let untagged Go in `internal/collector` build on Linux, `darwin_shim.c` carries `//go:build darwin`.

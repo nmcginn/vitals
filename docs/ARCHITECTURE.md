@@ -2,7 +2,9 @@
 
 ## Shape
 
-*Intended, with the M0 files as-built (`main.go`, `darwin.go`, `darwin_shim.c/.h`, `Makefile`; the shim has one `hw.machine` function until M2). Update in every PR that adds, moves, or removes a module.*
+*Intended, with these as-built: `main.go` (`-version` only until M2), `Makefile`, `darwin.go` and `darwin_shim.c/.h` (one `hw.machine` function until M2), `collector.go`, `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), and `render/json.go`. Update in every PR that adds, moves, or removes a module.*
+
+The complete JSON shape is fixed by the golden file [`internal/render/testdata/darwin_full.json`](../internal/render/testdata/darwin_full.json) (decision 13).
 
 ```
 main.go                       flags, slog, net.Listen, http.Server, signals, graceful shutdown
@@ -15,7 +17,10 @@ internal/collector/
   procfs.go                   untagged — /proc and /sys parsers over fs.FS
   filter.go                   default disk / interface exclude lists; -disk-exclude / -net-exclude
   testdata/                   captured /proc and /sys trees; darwin struct fixtures
-internal/sampler/             ticker loop, timeout, delta + rate math, Snapshot, ring buffer, Store
+internal/sampler/
+  sampler.go                  ticker loop, 80% timeout, skip-on-overrun, rate-limited group error logs
+  snapshot.go                 Snapshot types; build(): all delta and rate math
+  store.go                    ring buffer, Store (latest + copied history), Capacity()
 internal/server/              New(store, opts) http.Handler; routes; negotiation; common headers
 internal/render/
   json.go text.go prom.go html.go   one pure renderer per format

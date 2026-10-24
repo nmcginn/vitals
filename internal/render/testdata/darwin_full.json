@@ -1,0 +1,92 @@
+{
+  "sampled_at": "2026-10-21T14:02:06Z",
+  "interval_s": 2,
+  "host": {
+    "hostname": "mini",
+    "os": "darwin",
+    "os_version": "26.1",
+    "kernel": "25.1.0",
+    "arch": "arm64",
+    "uptime_s": 864000,
+    "boot_time": "2026-10-11T14:02:06Z",
+    "load": [
+      0.41,
+      0.38,
+      0.35
+    ]
+  },
+  "cpu": {
+    "usage_pct": 6.2,
+    "per_core_pct": [
+      9.1,
+      4,
+      12.5,
+      7,
+      3.2,
+      2.8,
+      5.5,
+      1,
+      0,
+      16
+    ],
+    "cores": 10,
+    "model": "Apple M4",
+    "darwin": {
+      "p_cores": 4,
+      "e_cores": 6,
+      "core_kinds": [
+        "P",
+        "P",
+        "P",
+        "P",
+        "E",
+        "E",
+        "E",
+        "E",
+        "E",
+        "E"
+      ]
+    }
+  },
+  "memory": {
+    "total_bytes": 17179869184,
+    "available_bytes": 7516192768,
+    "used_bytes": 9663676416,
+    "swap_total_bytes": 0,
+    "swap_used_bytes": 0,
+    "darwin": {
+      "wired_bytes": 2147483648,
+      "compressed_bytes": 536870912,
+      "active_bytes": 4294967296,
+      "inactive_bytes": 3221225472,
+      "file_backed_bytes": 2684354560,
+      "pressure": "normal"
+    }
+  },
+  "disks": [
+    {
+      "mount": "/",
+      "device": "/dev/disk3s1",
+      "fs": "apfs",
+      "total_bytes": 494384795648,
+      "used_bytes": 120259084288,
+      "free_bytes": 374125711360,
+      "used_pct": 24.3,
+      "read_bps": 0,
+      "write_bps": 40960
+    }
+  ],
+  "network": [
+    {
+      "iface": "en0",
+      "rx_bps": 12800,
+      "tx_bps": 3400,
+      "rx_pps": 21,
+      "tx_pps": 14,
+      "rx_total_bytes": 98234111,
+      "tx_total_bytes": 12001221
+    }
+  ],
+  "temps": null,
+  "errors": {}
+}
