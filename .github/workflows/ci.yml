@@ -30,7 +30,10 @@ jobs:
 
       - uses: actions/setup-go@v7
         with: { go-version-file: go.mod }
-      - env: { CGO_ENABLED: '1' }
+      # -count=1: the darwin tests check the live OS, which Go's test cache can't
+      # see, so a restored cache would report a pass without running them.
+      - env: { CGO_ENABLED: '1', GOFLAGS: '-count=1' }
         run: make check
+      # ./..., not .: main doesn't import the collector yet, so `.` skips the cgo.
       - env: { CGO_ENABLED: '1' }
-        run: go build -o /dev/null .
+        run: go build ./...
