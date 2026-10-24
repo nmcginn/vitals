@@ -27,6 +27,7 @@ Flags: `-listen` (default `127.0.0.1:9110`), `-interval` (`2s`, at least `1s`), 
 go mod download
 make run
 make check     # everything CI runs; run before pushing
+make shim-check  # on a Mac: lint, analyze, and sanitize the C shim (part of check)
 make golden    # regenerate renderer golden files; review the diff
 ```
 

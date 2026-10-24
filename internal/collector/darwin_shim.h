@@ -1,7 +1,6 @@
 #ifndef VITALS_DARWIN_SHIM_H
 #define VITALS_DARWIN_SHIM_H
 
-#include <stddef.h>
 #include <stdint.h>
 
 // Read once at startup. Each string is "" when its sysctl failed.

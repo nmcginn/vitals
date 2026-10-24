@@ -2,7 +2,7 @@
 
 ## Shape
 
-*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host group only until M3 to M7), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/healthz`, `/api/v1/stats`, `/api/v1/history`), and `render/json.go` (`JSON`, `History`). Not yet: `filter.go`, the HTML, text, and Prometheus renderers, and `contrib/`. Update in every PR that adds, moves, or removes a module.*
+*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host group only until M3 to M7), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/healthz`, `/api/v1/stats`, `/api/v1/history`), and `render/json.go` (`JSON`, `History`). Not yet: `filter.go`, the HTML, text, and Prometheus renderers, and `contrib/`. Update in every PR that adds, moves, or removes a module.*
 
 The complete JSON shape is fixed by the golden file [`internal/render/testdata/darwin_full.json`](../internal/render/testdata/darwin_full.json) (decision 13).
 
@@ -11,7 +11,8 @@ main.go                       flags, slog, net.Listen, http.Server, signals, gra
 internal/collector/
   collector.go                Collector interface; Raw (counters + gauges per group, per-group errors); HostInfo
   darwin.go                   //go:build darwin — cgo: calls the shim, hands C structs to darwin_conv.go
-  darwin_shim.c / .h          Mach, sysctl, IOKit calls; plain C structs out; no logic
+  nocgo_darwin.go             darwin without cgo: fails the build with a message naming the fix
+  darwin_shim.c / .h          Mach, sysctl, IOKit calls; plain C structs out; no logic; `make shim-check` lints it
   darwin_conv.go              untagged — pure conversion of shim output to Raw (P/E tagging, pressure, memory formula)
   linux.go                    //go:build linux — wires os.DirFS("/") and syscall.Statfs into procfs.go
   procfs.go                   untagged — /proc and /sys parsers over fs.FS

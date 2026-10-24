@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M1 merged. M2 (first light) is open as a PR.
-- Next up: M3 (needs M2 merged).
-- Open PRs waiting on review: the M2 PR.
+- Current: M2 merged. The darwin shim now has its own lint, analyzer, and sanitizer pass in `make check` (decision 19).
+- Next up: M3.
+- Open PRs waiting on review: the shim-check PR.
 
 ## Open questions for the maintainer
 

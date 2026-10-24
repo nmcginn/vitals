@@ -7,10 +7,14 @@
 #include <sys/sysctl.h>
 #include <sys/time.h>
 
-static void str(const char *name, char *buf, size_t len) {
+static void str(const char *name, char *buf, size_t size) {
+	size_t len = size;
 	if (sysctlbyname(name, buf, &len, NULL, 0) != 0) {
 		buf[0] = '\0';
 	}
+	// C.GoString reads to the first NUL, so one must be inside the buffer
+	// whatever the sysctl handler copied out.
+	buf[size - 1] = '\0';
 }
 
 void vitals_host_static(struct vitals_host_static *out) {
