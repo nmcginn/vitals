@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: the line-count and network-mount decisions (29, 30) in review.
-- Next up: M7.
-- Open PRs waiting on review: the maintainer-decisions PR.
+- Current: M7, Linux temperatures, in review.
+- Next up: M8.
+- Open PRs waiting on review: M7.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ None right now.
 ---
 
 ## Open
-
-### M7: Linux temperatures
-
-- [ ] **Temperature sensors on Linux, absent cleanly everywhere else.**
-  *Needs:* M2.
-  `/sys/class/hwmon/hwmon*/temp*_input` (millidegrees → °C), labelled from `temp*_label` when present, else `<name>/temp<N>` from the hwmon's `name` file. On darwin, `temps` stays `null` in v1.
-
-  *Acceptance:* fixtures cover `coretemp` with labels, `nvme` without labels, a sensor reading `-ENODATA` (skipped, other sensors served), and a machine with no hwmon directory at all (`"temps": null`, no error). Labels are unique (duplicates get a numeric suffix), so Prometheus series never collide.
 
 ### M8: Dashboard
 
@@ -87,6 +79,7 @@ None right now.
 - **M4: Memory.** Memory and swap on both platforms, with darwin's Activity Monitor formula, wired, compressed, active, inactive, file-backed, and pressure (decisions 22, 23).
 - **M5: Network.** Per-interface totals and rates on both platforms, darwin from `IFMIB_IFDATA` for true 64-bit counters, and the default interface list with `-net-exclude` in `filter.go` (decisions 24, 25).
 - **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28). *Decided* after M6: network filesystems join the default exclude list (decision 30).
+- **M7: Linux temperatures.** hwmon sensors labelled from `temp*_label` or `<chip>/temp<N>`, unique labels by suffix, unreadable sensors skipped, `"temps": null` with no sensors (decision 31).
 
 ---
 

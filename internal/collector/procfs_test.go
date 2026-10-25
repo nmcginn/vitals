@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
-	"maps"
 	"os"
 	"regexp"
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -171,18 +171,10 @@ func TestProcfsHost(t *testing.T) {
 		})
 	}
 
-	t.Run("groups that haven't landed say so in errors, and nothing else does", func(t *testing.T) {
+	t.Run("a healthy machine reports no errors in any group", func(t *testing.T) {
 		_, raw := collect(t, minimal())
-		got := map[string]string{}
 		for g, err := range raw.Errors {
-			got[g] = err.Error()
-		}
-		want := map[string]string{}
-		for _, g := range []string{GroupTemps} {
-			want[g] = "not implemented yet"
-		}
-		if !maps.Equal(got, want) {
-			t.Errorf("errors = %v\nwant     %v", got, want)
+			t.Errorf("%s error = %v, want none", g, err)
 		}
 	})
 }
@@ -541,6 +533,145 @@ func TestProcfsDisks(t *testing.T) {
 		}
 		if len(raw.Disks) != 1 || raw.Disks[0].IO != nil {
 			t.Errorf("disks = %+v, want / with no counters", raw.Disks)
+		}
+	})
+}
+
+// failing makes reads of the named files fail with err, the way sysfs answers
+// a sensor that has no reading.
+type failing struct {
+	fs.FS
+	names []string
+	err   error
+}
+
+func (f failing) Open(name string) (fs.File, error) {
+	if slices.Contains(f.names, name) {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: f.err}
+	}
+	return f.FS.Open(name)
+}
+
+func TestProcfsTemps(t *testing.T) {
+	x86 := os.DirFS("testdata/x86-8core")
+	labels := func(ts []Temp) []string {
+		l := []string{}
+		for _, t := range ts {
+			l = append(l, t.Label)
+		}
+		return l
+	}
+	// chips builds a hwmon tree: each chip's name, then its temp<N> files.
+	chips := func(files map[string]string) fs.FS {
+		m := minimal()
+		for name, data := range files {
+			m["sys/class/hwmon/"+name] = &fstest.MapFile{Data: []byte(data + "\n")}
+		}
+		return m
+	}
+
+	t.Run("the x86 fixture labels coretemp from its label files and the unlabelled chips by name, in °C", func(t *testing.T) {
+		_, raw := collect(t, x86)
+		if err := raw.Errors[GroupTemps]; err != nil {
+			t.Fatalf("temps error: %v", err)
+		}
+		want := []Temp{
+			{"acpitz/temp1", 27.8},
+			{"Package id 0", 52}, {"Core 0", 49}, {"Core 1", 51}, {"Core 2", 47}, {"Core 3", 50},
+			{"Core 4", 48}, {"Core 5", 53}, {"Core 6", 46}, {"Core 7", 49},
+			{"nvme/temp1", 38.85}, {"nvme/temp2", 38.85}, {"nvme/temp3", 41.85},
+		}
+		if !slices.Equal(raw.Temps, want) {
+			t.Errorf("temps = %v\nwant    %v", raw.Temps, want)
+		}
+	})
+
+	t.Run("a sensor reading ENODATA is skipped and the others are served without an error", func(t *testing.T) {
+		_, raw := collect(t, failing{x86, []string{"sys/class/hwmon/hwmon2/temp2_input"}, syscall.ENODATA})
+		if err := raw.Errors[GroupTemps]; err != nil {
+			t.Errorf("temps error = %v, want none for one unreadable sensor", err)
+		}
+		got := labels(raw.Temps)
+		if len(got) != 12 || slices.Contains(got, "nvme/temp2") || !slices.Contains(got, "nvme/temp3") {
+			t.Errorf("labels = %v, want every sensor but nvme/temp2", got)
+		}
+	})
+
+	t.Run("a machine with no hwmon directory has temps nil and no error", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/ubuntu-vm"))
+		if raw.Temps != nil || raw.Errors[GroupTemps] != nil {
+			t.Errorf("temps = %v, error = %v, want nil and none", raw.Temps, raw.Errors[GroupTemps])
+		}
+	})
+
+	t.Run("hwmon chips with no temperature inputs have temps nil and no error", func(t *testing.T) {
+		_, raw := collect(t, chips(map[string]string{"hwmon0/name": "nct6798", "hwmon0/fan1_input": "1200", "hwmon0/in0_input": "1032"}))
+		if raw.Temps != nil || raw.Errors[GroupTemps] != nil {
+			t.Errorf("temps = %v, error = %v, want nil and none", raw.Temps, raw.Errors[GroupTemps])
+		}
+	})
+
+	t.Run("when every sensor fails, temps is nil and the error names each one", func(t *testing.T) {
+		fsys := chips(map[string]string{"hwmon0/name": "acpitz", "hwmon0/temp1_input": "x", "hwmon1/name": "nvme", "hwmon1/temp1_input": "1"})
+		_, raw := collect(t, failing{fsys, []string{"sys/class/hwmon/hwmon1/temp1_input"}, syscall.ENODATA})
+		err := raw.Errors[GroupTemps]
+		if raw.Temps != nil || err == nil {
+			t.Fatalf("temps = %v, error = %v, want nil and an error", raw.Temps, err)
+		}
+		for _, want := range []string{"/sys/class/hwmon/hwmon0/temp1_input", `"x" is not millidegrees`, "/sys/class/hwmon/hwmon1/temp1_input", syscall.ENODATA.Error()} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %q, want it to contain %q", err, want)
+			}
+		}
+	})
+
+	t.Run("a hwmon directory that can't be listed fails the group", func(t *testing.T) {
+		_, raw := collect(t, failing{x86, []string{"sys/class/hwmon"}, fs.ErrPermission})
+		if err := raw.Errors[GroupTemps]; err == nil || !strings.Contains(err.Error(), "reading /sys/class/hwmon") {
+			t.Errorf("temps error = %v, want one naming /sys/class/hwmon", err)
+		}
+	})
+
+	t.Run("duplicate labels get numeric suffixes, so no two sensors share one", func(t *testing.T) {
+		// Two sockets, each with its own coretemp chip and the same labels,
+		// and a chip whose real label is what a suffix would have produced.
+		_, raw := collect(t, chips(map[string]string{
+			"hwmon0/name": "coretemp", "hwmon0/temp1_label": "Core 0", "hwmon0/temp1_input": "40000",
+			"hwmon1/name": "coretemp", "hwmon1/temp1_label": "Core 0", "hwmon1/temp1_input": "41000",
+			"hwmon2/name": "coretemp", "hwmon2/temp1_label": "Core 0", "hwmon2/temp1_input": "42000",
+			"hwmon3/name": "odd", "hwmon3/temp1_label": "Core 0 #2", "hwmon3/temp1_input": "43000",
+			"hwmon4/name": "acpitz", "hwmon4/temp1_input": "30000", "hwmon5/name": "acpitz", "hwmon5/temp1_input": "31000",
+		}))
+		want := []Temp{{"Core 0", 40}, {"Core 0 #2", 41}, {"Core 0 #3", 42}, {"Core 0 #2 #2", 43}, {"acpitz/temp1", 30}, {"acpitz/temp1 #2", 31}}
+		if !slices.Equal(raw.Temps, want) {
+			t.Errorf("temps = %v\nwant    %v", raw.Temps, want)
+		}
+	})
+
+	t.Run("chips and sensors go in numeric order, so hwmon10 and temp10 come last", func(t *testing.T) {
+		_, raw := collect(t, chips(map[string]string{
+			"hwmon10/name": "late", "hwmon10/temp1_input": "1000",
+			"hwmon2/name": "early", "hwmon2/temp10_input": "3000", "hwmon2/temp2_input": "2000",
+		}))
+		if got, want := labels(raw.Temps), []string{"early/temp2", "early/temp10", "late/temp1"}; !slices.Equal(got, want) {
+			t.Errorf("labels = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a chip without a name file is named by its directory, and blank labels are ignored", func(t *testing.T) {
+		_, raw := collect(t, chips(map[string]string{"hwmon3/temp1_input": "50000", "hwmon3/temp1_label": "  "}))
+		if want := []Temp{{"hwmon3/temp1", 50}}; !slices.Equal(raw.Temps, want) {
+			t.Errorf("temps = %v, want %v", raw.Temps, want)
+		}
+	})
+
+	t.Run("below-zero readings are kept, and other files that start with temp are ignored", func(t *testing.T) {
+		_, raw := collect(t, chips(map[string]string{
+			"hwmon0/name": "outdoor", "hwmon0/temp1_input": "-12500", "hwmon0/temp1_max": "60000",
+			"hwmon0/temp_input": "1", "hwmon0/tempx_input": "1", "hwmon0/temp2_input.bak": "1",
+		}))
+		if want := []Temp{{"outdoor/temp1", -12.5}}; !slices.Equal(raw.Temps, want) {
+			t.Errorf("temps = %v, want %v", raw.Temps, want)
 		}
 	})
 }

@@ -4,7 +4,6 @@ package collector
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -17,16 +16,6 @@ const (
 	GroupNetwork = "network"
 	GroupTemps   = "temps"
 )
-
-// pending marks the groups whose collectors haven't landed yet. Each milestone
-// in docs/ROADMAP.md removes its group from the callers.
-func pending(groups ...string) map[string]error {
-	m := make(map[string]error, len(groups))
-	for _, g := range groups {
-		m[g] = errors.New("not implemented yet")
-	}
-	return m
-}
 
 // unknownModel is HostInfo.CPUModel when the OS doesn't name the CPU.
 const unknownModel = "unknown"

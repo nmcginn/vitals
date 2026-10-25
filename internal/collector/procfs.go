@@ -44,7 +44,7 @@ func newProcfs(fsys fs.FS, statfs statfsFunc, opts Options) *procfs {
 func (p *procfs) Static() HostInfo { return p.info }
 
 func (p *procfs) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupTemps)}
+	raw := Raw{Errors: map[string]error{}}
 	// The host and CPU groups both read /proc/stat, which on a big machine is
 	// mostly one long intr line, so it's read once.
 	if stat, err := p.read("proc/stat"); err != nil {
@@ -77,7 +77,103 @@ func (p *procfs) Collect(ctx context.Context) (Raw, error) {
 	if raw.Disks = d; err != nil {
 		raw.Errors[GroupDisks] = err
 	}
+	t, err := p.temps()
+	if raw.Temps = t; err != nil {
+		raw.Errors[GroupTemps] = err
+	}
 	return raw, nil
+}
+
+// temps reads each hwmon chip's temp<N>_input, in millidegrees Celsius. A
+// sensor is labelled by its temp<N>_label, else "<chip name>/temp<N>", and a
+// label already taken gets " #2", " #3", and so on, so Prometheus series never
+// collide. Chips and sensors go in numeric order, which keeps the suffixes on
+// the same sensors from one sample to the next. A machine with no hwmon
+// directory, as in most VMs and containers, has no sensors, which isn't an
+// error. Drivers often list inputs that can't be read (-ENODATA for an
+// unconnected probe), so an unreadable sensor is skipped quietly, and the
+// group fails only when there were sensors and none could be read (decision 31).
+func (p *procfs) temps() ([]Temp, error) {
+	chips, err := fs.ReadDir(p.fsys, "sys/class/hwmon")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading /sys/class/hwmon: %w", err)
+	}
+	slices.SortFunc(chips, func(a, b fs.DirEntry) int {
+		return cmp.Or(cmp.Compare(trailingNumber(a.Name()), trailingNumber(b.Name())), cmp.Compare(a.Name(), b.Name()))
+	})
+	var ts []Temp
+	var bad []string
+	used := map[string]bool{}
+	for _, c := range chips {
+		dir := "sys/class/hwmon/" + c.Name()
+		files, err := fs.ReadDir(p.fsys, dir)
+		if err != nil {
+			bad = append(bad, fmt.Sprintf("reading /%s: %v", dir, err))
+			continue
+		}
+		var sensors []int
+		for _, f := range files {
+			if n, ok := tempInput(f.Name()); ok {
+				sensors = append(sensors, n)
+			}
+		}
+		slices.Sort(sensors)
+		chip := cmp.Or(p.line(dir+"/name"), c.Name())
+		for _, n := range sensors {
+			name := fmt.Sprintf("%s/temp%d_input", dir, n)
+			s, err := p.read(name)
+			if err != nil {
+				bad = append(bad, err.Error())
+				continue
+			}
+			milli, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+			if err != nil {
+				bad = append(bad, fmt.Sprintf("parsing /%s: %q is not millidegrees", name, strings.TrimSpace(s)))
+				continue
+			}
+			base := cmp.Or(p.line(fmt.Sprintf("%s/temp%d_label", dir, n)), fmt.Sprintf("%s/temp%d", chip, n))
+			label := base
+			for k := 2; used[label]; k++ {
+				label = fmt.Sprintf("%s #%d", base, k)
+			}
+			used[label] = true
+			ts = append(ts, Temp{Label: label, Celsius: float64(milli) / 1000})
+		}
+	}
+	if len(ts) == 0 && len(bad) > 0 {
+		return nil, fmt.Errorf("no temperature sensor could be read: %s", strings.Join(bad, "; "))
+	}
+	return ts, nil
+}
+
+// tempInput reports N for a hwmon file named temp<N>_input.
+func tempInput(file string) (int, bool) {
+	s, ok := strings.CutPrefix(file, "temp")
+	if !ok {
+		return 0, false
+	}
+	if s, ok = strings.CutSuffix(s, "_input"); !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	return n, err == nil && n >= 0
+}
+
+// trailingNumber is the number ending a name like hwmon12, or -1 without one,
+// so hwmon10 sorts after hwmon9.
+func trailingNumber(name string) int {
+	i := len(name)
+	for i > 0 && name[i-1] >= '0' && name[i-1] <= '9' {
+		i--
+	}
+	n, err := strconv.Atoi(name[i:])
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 // disks reads /proc/self/mounts, "device mount fstype options 0 0", keeps
