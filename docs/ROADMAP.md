@@ -14,27 +14,20 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M5 (network) in review.
-- Next up: M6.
-- Open PRs waiting on review: the M5 network PR.
+- Current: M6 (disks) in review.
+- Next up: M7.
+- Open PRs waiting on review: the M6 disks PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **The line budget.** After M5, non-test Go is 1,506 lines (plus a 307-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Two groups (disks on both platforms, Linux temperatures) and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M6 onwards should squeeze.
+- **The line budget.** After M6, non-test Go is 1,768 lines (plus a 452-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. One group (Linux temperatures) and three renderers remain; at the pace so far (about 250 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M6 onwards should squeeze.
+- **A hung network mount on Linux.** `statfs` on an NFS or CIFS mount whose server has gone away can block for minutes (forever with NFS `hard`), and the sampler can't interrupt a syscall, so every group would go stale. Darwin avoids it by refreshing only local mounts (decision 28); Linux has no cached figures to fall back on. Options: (a) add the network types (`nfs`, `nfs4`, `cifs`, `smb3`, `fuse.sshfs`, `9p`) to the default exclude list, so `-disk-exclude` brings them back for those who want them; (b) run each network mount's statfs in a goroutine with a timeout and skip it while one is outstanding; (c) accept it. Recommendation: (a), the smallest and plainest fix, though it changes PLAN's list. Blocks nothing.
 
 ---
 
 ## Open
-
-### M6: Disks
-
-- [ ] **Per-mount usage, and read/write throughput per physical device.**
-  *Needs:* M2.
-  Darwin: `getfsstat` + `statfs`, and IOKit `IOBlockStorageDriver` "Statistics" (`Bytes (Read)`, `Bytes (Write)`) mapped to mounts per decision 7. Linux: `/proc/self/mounts`, `statfs` (injected, so tests don't hit the real filesystem), `/proc/diskstats` sectors × 512, and the partition-to-parent mapping via `/sys/class/block`. Default filesystem and mount exclusions per PLAN, including the darwin additions, and `-disk-exclude` (a regex over mount point or fs type that replaces the defaults).
-
-  *Acceptance:* used = total − free, and used % = used ÷ total × 100. A zero-size filesystem gives `null` % rather than NaN. Linux fixtures cover `\040` (space) and `\011` escapes in mount points, bind mounts of the same device, snap mounts (excluded), `overlay`, `tmpfs`, `cgroup2`, and `squashfs` (excluded), and an NVMe partition (`nvme0n1p2` → `nvme0n1`) and a SATA one (`sda1` → `sda`) mapped to their devices. A mount whose device can't be mapped gets `null` rates, not 0. Darwin conversion tests cover a `statfs` fixture and the `/System/Volumes/*` exclusion. The darwin integration test checks that `/` is present with total > 0 and used % within 0 to 100, and that I/O counters are non-decreasing where present. A VM device without statistics gives `null` rates, not a failed group.
 
 ### M7: Linux temperatures
 
@@ -94,6 +87,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M3: CPU.** Total and per-core usage on both platforms, the model name, and the darwin P/E split from `IODeviceTree:/cpus` checked against `hw.perflevel` (decisions 20, 21).
 - **M4: Memory.** Memory and swap on both platforms, with darwin's Activity Monitor formula, wired, compressed, active, inactive, file-backed, and pressure (decisions 22, 23).
 - **M5: Network.** Per-interface totals and rates on both platforms, darwin from `IFMIB_IFDATA` for true 64-bit counters, and the default interface list with `-net-exclude` in `filter.go` (decisions 24, 25).
+- **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28).
 
 ---
 

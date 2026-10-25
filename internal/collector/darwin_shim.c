@@ -5,12 +5,16 @@
 #include "darwin_shim.h"
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOBSD.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/storage/IOBlockStorageDriver.h>
 #include <mach/mach.h>
 #include <errno.h>
 #include <net/if.h>
 #include <net/if_mib.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
@@ -209,4 +213,109 @@ int vitals_net(struct vitals_iface *out, int max) {
 		n++;
 	}
 	return n;
+}
+
+static void copy_statfs(struct vitals_mount *out, const struct statfs *st) {
+	out->flags = st->f_flags;
+	out->bsize = st->f_bsize;
+	out->blocks = st->f_blocks;
+	out->bavail = st->f_bavail;
+}
+
+static void copy_str(char *dst, size_t size, const char *src) {
+	strncpy(dst, src, size - 1);
+	dst[size - 1] = '\0';
+}
+
+int vitals_mounts(struct vitals_mount *out, int max) {
+	int n = getfsstat(NULL, 0, MNT_NOWAIT);
+	if (n < 0) {
+		return -1;
+	}
+	// Room for a few mounts that appear between the two calls; getfsstat
+	// fills what fits and returns how many it wrote.
+	int room = n + 4;
+	struct statfs *buf = malloc((size_t)room * sizeof *buf);
+	if (buf == NULL) {
+		return -1;
+	}
+	n = getfsstat(buf, room * (int)sizeof *buf, MNT_NOWAIT);
+	for (int i = 0; i < n && i < max; i++) {
+		copy_str(out[i].mount, sizeof out[i].mount, buf[i].f_mntonname);
+		copy_str(out[i].device, sizeof out[i].device, buf[i].f_mntfromname);
+		copy_str(out[i].fs, sizeof out[i].fs, buf[i].f_fstypename);
+		copy_statfs(&out[i], &buf[i]);
+	}
+	free(buf);
+	return n;
+}
+
+int vitals_statfs(struct vitals_mount *m) {
+	struct statfs st;
+	if (statfs(m->mount, &st) != 0) {
+		return -1;
+	}
+	copy_statfs(m, &st);
+	return 0;
+}
+
+static int i64(CFDictionaryRef dict, CFStringRef key, uint64_t *out) {
+	CFTypeRef v = CFDictionaryGetValue(dict, key);
+	if (v == NULL || CFGetTypeID(v) != CFNumberGetTypeID()) {
+		return -1;
+	}
+	int64_t n = 0;
+	CFNumberGetValue((CFNumberRef)v, kCFNumberSInt64Type, &n);
+	*out = (uint64_t)n;
+	return 0;
+}
+
+// The driver's own counters, and the BSD name of the whole-disk IOMedia it
+// publishes (media, the entry just below it).
+static int copy_disk_io(io_registry_entry_t driver, io_registry_entry_t media, struct vitals_disk_io *out) {
+	out->device[0] = '\0';
+	CFTypeRef name = IORegistryEntryCreateCFProperty(media, CFSTR(kIOBSDNameKey), kCFAllocatorDefault, 0);
+	if (name != NULL) {
+		if (CFGetTypeID(name) != CFStringGetTypeID() ||
+		    !CFStringGetCString((CFStringRef)name, out->device, sizeof out->device, kCFStringEncodingUTF8)) {
+			out->device[0] = '\0';
+		}
+		CFRelease(name);
+	}
+	CFTypeRef stats = IORegistryEntryCreateCFProperty(driver, CFSTR(kIOBlockStorageDriverStatisticsKey), kCFAllocatorDefault, 0);
+	if (stats == NULL) {
+		return -3;
+	}
+	int rc = -3;
+	if (CFGetTypeID(stats) == CFDictionaryGetTypeID() &&
+	    i64((CFDictionaryRef)stats, CFSTR(kIOBlockStorageDriverStatisticsBytesReadKey), &out->read_bytes) == 0 &&
+	    i64((CFDictionaryRef)stats, CFSTR(kIOBlockStorageDriverStatisticsBytesWrittenKey), &out->write_bytes) == 0) {
+		rc = 0;
+	}
+	CFRelease(stats);
+	return rc;
+}
+
+// An APFS volume's IOMedia sits under its container, which sits on a
+// partition of the physical disk, so the walk up the service plane passes
+// those to reach the disk's IOBlockStorageDriver (decision 7).
+int vitals_disk_io(const char *bsd_name, struct vitals_disk_io *out) {
+	// IOServiceGetMatchingService consumes the matching dictionary.
+	io_registry_entry_t child = IOServiceGetMatchingService(kIOMainPortDefault, IOBSDNameMatching(kIOMainPortDefault, 0, bsd_name));
+	if (child == 0) {
+		return -1;
+	}
+	int rc = -2;
+	io_registry_entry_t parent = 0;
+	while (IORegistryEntryGetParentEntry(child, kIOServicePlane, &parent) == KERN_SUCCESS) {
+		if (IOObjectConformsTo(parent, kIOBlockStorageDriverClass)) {
+			rc = copy_disk_io(parent, child, out);
+			IOObjectRelease(parent);
+			break;
+		}
+		IOObjectRelease(child);
+		child = parent;
+	}
+	IOObjectRelease(child);
+	return rc;
 }

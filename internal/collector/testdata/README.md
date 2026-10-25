@@ -8,5 +8,9 @@ and should be replaced by captures when such a machine is to hand.
 - `x86-8core/`: hand-written. `proc/stat`, `proc/cpuinfo`, `proc/meminfo`, and `proc/net/dev`
   for an 8-core, 8-thread Core i7-9700 with 32 GiB and 8 GiB of swap, plus
   Docker, WireGuard, and Tailscale interfaces and an uplink with counters past 2³².
+  `proc/self/mounts`, `proc/diskstats`, and `sys/block` add an NVMe root and EFI
+  partition, a SATA disk mounted at `/media\040lib` and bind-mounted again, an LVM
+  volume, an unmapped USB stick at `/mnt/usb\011stick`, a CIFS share, and the
+  pseudo, snap, and Docker mounts the default list drops.
 - `arm64-graviton2/`: hand-written. `proc/stat` and `proc/cpuinfo` for a 4-vCPU
   AWS Graviton2 (Neoverse N1), whose cpuinfo has no `model name`.

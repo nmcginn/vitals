@@ -68,6 +68,27 @@ struct vitals_iface {
 	uint64_t opackets;
 };
 
+// More mounts than a Mac has, counting every /System/Volumes volume.
+#define VITALS_MAX_MOUNTS 64
+
+// One mount's statfs record: names, and sizes in bsize blocks.
+struct vitals_mount {
+	char mount[1024];  // f_mntonname
+	char device[1024]; // f_mntfromname, e.g. "/dev/disk3s1s1"
+	char fs[16];       // f_fstypename, e.g. "apfs"
+	uint32_t flags;    // f_flags; MNT_LOCAL is set for local filesystems
+	uint32_t bsize;
+	uint64_t blocks;
+	uint64_t bavail;
+};
+
+// The byte counters of the physical disk behind a BSD device.
+struct vitals_disk_io {
+	char device[32]; // the whole disk's BSD name, e.g. "disk0"
+	uint64_t read_bytes;
+	uint64_t write_bytes;
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -91,5 +112,20 @@ int vitals_memory(struct vitals_memory *out);
 // interfaces, which may exceed max, -1 if the IFMIB_IFCOUNT sysctl failed, or
 // -2 if an interface's IFMIB_IFDATA sysctl failed other than for a gap.
 int vitals_net(struct vitals_iface *out, int max);
+
+// Copies up to max mounts from getfsstat(MNT_NOWAIT), whose sizes are the
+// kernel's cached figures, into out. Returns the number of mounts, which may
+// exceed max, or -1 if getfsstat failed.
+int vitals_mounts(struct vitals_mount *out, int max);
+
+// Refreshes m's sizes with statfs(m->mount). Returns 0, or -1 if statfs failed,
+// leaving m as it was.
+int vitals_statfs(struct vitals_mount *m);
+
+// Finds the IOBlockStorageDriver above the BSD device bsd_name ("disk3s1s1")
+// and copies its byte counters. Returns 0, -1 if no IOMedia has that name, -2
+// if no IOBlockStorageDriver is above it, or -3 if the driver has no
+// "Statistics" byte counters, as on some virtual disks.
+int vitals_disk_io(const char *bsd_name, struct vitals_disk_io *out);
 
 #endif

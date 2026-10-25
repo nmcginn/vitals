@@ -5,7 +5,40 @@ import "regexp"
 // Options are the collector's settings from flags. A nil regex means the
 // built-in list; a user's regex replaces that list rather than adding to it.
 type Options struct {
-	NetExclude *regexp.Regexp
+	DiskExclude *regexp.Regexp
+	NetExclude  *regexp.Regexp
+}
+
+// defaultDiskExclude is PLAN's list, matched against the mount point and the
+// fs type in turn: the kernel's pseudo filesystems, container layers, snap
+// images, and on darwin devfs, autofs, nullfs, and the APFS volumes under
+// /System/Volumes, which share the container that / already reports.
+var defaultDiskExclude = regexp.MustCompile(`^(proc|sysfs|tmpfs|devtmpfs|devpts|ramfs|overlay|squashfs|cgroup.*|securityfs|pstore|bpf|tracefs|debugfs|configfs|fusectl|mqueue|hugetlbfs|autofs|binfmt_misc|rpc_pipefs|nsfs|efivarfs|selinuxfs|fuse\.lxcfs|fuse\.gvfsd-fuse|devfs|nullfs|/snap/.*|/System/Volumes/.*)$`)
+
+// keepDisks drops excluded mounts, then keeps one mount per device: a bind
+// mount, or a second btrfs subvolume, would otherwise show the same space
+// twice. The shortest mount point stands for the device, as with df. The
+// result is never nil, so filtering everything out gives "disks": [].
+func keepDisks(ds []Disk, exclude *regexp.Regexp) []Disk {
+	if exclude == nil {
+		exclude = defaultDiskExclude
+	}
+	kept := []Disk{}
+	at := map[string]int{}
+	for _, d := range ds {
+		if exclude.MatchString(d.Mount) || exclude.MatchString(d.FS) {
+			continue
+		}
+		if i, ok := at[d.Device]; ok {
+			if len(d.Mount) < len(kept[i].Mount) {
+				kept[i] = d
+			}
+			continue
+		}
+		at[d.Device] = len(kept)
+		kept = append(kept, d)
+	}
+	return kept
 }
 
 // defaultNetExclude is PLAN's list: loopback, container and VM plumbing, VPN

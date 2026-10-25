@@ -3,6 +3,7 @@ package collector
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -190,4 +191,34 @@ func coreKinds(ncpu int, pl perfLevels, nodes []cpuNode) (*CPUDarwin, error) {
 			d.PCores, d.ECores, pl.Logical[0], pl.Logical[1])
 	}
 	return d, nil
+}
+
+// fsMount mirrors one statfs record from getfsstat, sizes in Bsize blocks.
+type fsMount struct {
+	Mount, Device, FS string
+	Bsize             uint32
+	Blocks, Bavail    uint64
+}
+
+// disksFromStatfs filters the mounts and sizes the rest. Free is f_bavail,
+// not f_bfree: on APFS f_bfree leaves out what the container's other volumes
+// use, so / would show only the sealed system volume's few GiB as used, while
+// f_bavail is the container's free space, as Finder shows it (decision 26).
+func disksFromStatfs(ms []fsMount, exclude *regexp.Regexp) []Disk {
+	ds := make([]Disk, len(ms))
+	for i, m := range ms {
+		ds[i] = Disk{Mount: m.Mount, Device: m.Device, FS: m.FS,
+			TotalBytes: m.Blocks * uint64(m.Bsize), FreeBytes: m.Bavail * uint64(m.Bsize)}
+	}
+	return keepDisks(ds, exclude)
+}
+
+// diskIOFromShim is a mount's device counters, or nil when the shim couldn't
+// find them (rc != 0), as on a VM's virtual disk without statistics: the
+// mount is still listed, with null rates.
+func diskIOFromShim(rc int, device string, read, written uint64) *DiskIO {
+	if rc != 0 || device == "" {
+		return nil
+	}
+	return &DiskIO{Device: device, ReadBytes: read, WriteBytes: written}
 }

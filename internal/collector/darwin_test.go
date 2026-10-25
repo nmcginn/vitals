@@ -21,7 +21,7 @@ func TestDarwinCollect(t *testing.T) {
 		}
 	})
 
-	t.Run("two collections give sane, non-decreasing host, CPU, memory, and network groups", func(t *testing.T) {
+	t.Run("two collections give sane, non-decreasing host, CPU, memory, network, and disk groups", func(t *testing.T) {
 		first, err := c.Collect(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -111,6 +111,43 @@ func TestDarwinCollect(t *testing.T) {
 		}
 		if matched == 0 {
 			t.Errorf("no interface was in both collections: %v then %v", first.Network, second.Network)
+		}
+		for i, raw := range []Raw{first, second} {
+			if err := raw.Errors[GroupDisks]; err != nil {
+				t.Fatalf("collection %d: disks error %v", i+1, err)
+			}
+			var root *Disk
+			for j, d := range raw.Disks {
+				if d.Mount == "/" {
+					root = &raw.Disks[j]
+				}
+				if defaultDiskExclude.MatchString(d.Mount) || defaultDiskExclude.MatchString(d.FS) {
+					t.Errorf("collection %d: %s (%s) should have been filtered out", i+1, d.Mount, d.FS)
+				}
+			}
+			if root == nil {
+				t.Fatalf("collection %d: no / in %+v", i+1, raw.Disks)
+			}
+			if root.TotalBytes == 0 || root.FreeBytes > root.TotalBytes {
+				t.Errorf("collection %d: / total %d, free %d", i+1, root.TotalBytes, root.FreeBytes)
+			}
+			if pct := float64(root.TotalBytes-root.FreeBytes) / float64(root.TotalBytes) * 100; pct < 0 || pct > 100 {
+				t.Errorf("collection %d: / used %.1f%%, want 0 to 100", i+1, pct)
+			}
+			for _, d := range raw.Disks {
+				t.Logf("collection %d: %s on %s (%s): %d of %d free, io %+v", i+1, d.Device, d.Mount, d.FS, d.FreeBytes, d.TotalBytes, d.IO)
+			}
+		}
+		// A CI VM's virtual disk may have no statistics, which is null rates,
+		// so the counters are checked only where both collections have them.
+		io := map[string]*DiskIO{}
+		for _, d := range first.Disks {
+			io[d.Mount] = d.IO
+		}
+		for _, b := range second.Disks {
+			if a := io[b.Mount]; a != nil && b.IO != nil && (b.IO.ReadBytes < a.ReadBytes || b.IO.WriteBytes < a.WriteBytes) {
+				t.Errorf("%s I/O counters went backwards: %+v then %+v", b.Mount, a, b.IO)
+			}
 		}
 		if len(second.CPU.PerCore) != len(first.CPU.PerCore) {
 			t.Fatalf("core count changed: %d then %d", len(first.CPU.PerCore), len(second.CPU.PerCore))

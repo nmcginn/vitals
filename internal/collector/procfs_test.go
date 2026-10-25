@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -18,14 +19,17 @@ import (
 // it and change one file.
 func minimal() fstest.MapFS {
 	return fstest.MapFS{
-		"proc/uptime":               {Data: []byte("1000.00 3000.00\n")},
-		"proc/loadavg":              {Data: []byte("1.00 0.50 0.25 2/200 999\n")},
-		"proc/stat":                 {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
-		"proc/meminfo":              {Data: []byte("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 100 kB\nSwapFree: 75 kB\n")},
-		"proc/net/dev":              {Data: []byte(netDevHeader + "    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0\n  eth0:    5000      50    0    0    0     0          0         0     2000      20    0    0    0     0       0          0\n")},
-		"proc/sys/kernel/osrelease": {Data: []byte("6.12.48-amd64\n")},
-		"proc/sys/kernel/hostname":  {Data: []byte("box\n")},
-		"etc/os-release":            {Data: []byte("NAME=\"Debian GNU/Linux\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")},
+		"proc/uptime":                  {Data: []byte("1000.00 3000.00\n")},
+		"proc/loadavg":                 {Data: []byte("1.00 0.50 0.25 2/200 999\n")},
+		"proc/stat":                    {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
+		"proc/meminfo":                 {Data: []byte("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 100 kB\nSwapFree: 75 kB\n")},
+		"proc/net/dev":                 {Data: []byte(netDevHeader + "    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0\n  eth0:    5000      50    0    0    0     0          0         0     2000      20    0    0    0     0       0          0\n")},
+		"proc/sys/kernel/osrelease":    {Data: []byte("6.12.48-amd64\n")},
+		"proc/sys/kernel/hostname":     {Data: []byte("box\n")},
+		"proc/self/mounts":             {Data: []byte("proc /proc proc rw 0 0\n/dev/sda1 / ext4 rw,relatime 0 0\n")},
+		"proc/diskstats":               {Data: []byte("   8       0 sda 10 0 100 0 20 0 200 0 0 0 0\n   8       1 sda1 10 0 100 0 20 0 200 0 0 0 0\n")},
+		"sys/block/sda/sda1/partition": {Data: []byte("1\n")},
+		"etc/os-release":               {Data: []byte("NAME=\"Debian GNU/Linux\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")},
 	}
 }
 
@@ -40,9 +44,28 @@ func with(changes map[string]string, removals ...string) fs.FS {
 	return m
 }
 
+// fakeStatfs sizes each mount from sizes, or 1000 bytes with 250 available,
+// and fails for the mounts in fail.
+func fakeStatfs(sizes map[string][2]uint64, fail ...string) statfsFunc {
+	return func(mount string) (uint64, uint64, error) {
+		if slices.Contains(fail, mount) {
+			return 0, 0, fs.ErrPermission
+		}
+		if s, ok := sizes[mount]; ok {
+			return s[0], s[1], nil
+		}
+		return 1000, 250, nil
+	}
+}
+
 func collect(t *testing.T, fsys fs.FS) (*procfs, Raw) {
 	t.Helper()
-	p := newProcfs(fsys, Options{})
+	return collectWith(t, fsys, fakeStatfs(nil), Options{})
+}
+
+func collectWith(t *testing.T, fsys fs.FS, statfs statfsFunc, opts Options) (*procfs, Raw) {
+	t.Helper()
+	p := newProcfs(fsys, statfs, opts)
 	raw, err := p.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
@@ -155,7 +178,7 @@ func TestProcfsHost(t *testing.T) {
 			got[g] = err.Error()
 		}
 		want := map[string]string{}
-		for _, g := range []string{GroupDisks, GroupTemps} {
+		for _, g := range []string{GroupTemps} {
 			want[g] = "not implemented yet"
 		}
 		if !maps.Equal(got, want) {
@@ -289,8 +312,7 @@ func TestProcfsNetwork(t *testing.T) {
 	})
 
 	t.Run("a user's -net-exclude replaces the default list rather than adding to it", func(t *testing.T) {
-		p := newProcfs(os.DirFS("testdata/x86-8core"), Options{NetExclude: regexp.MustCompile(`^enp3s0$`)})
-		raw, _ := p.Collect(context.Background())
+		_, raw := collectWith(t, os.DirFS("testdata/x86-8core"), fakeStatfs(nil), Options{NetExclude: regexp.MustCompile(`^enp3s0$`)})
 		want := []string{"lo", "wg-home", "docker0", "veth3f2a1b0", "br-5e1f0c2d9a7b", "tailscale0"}
 		if got := names(raw.Network); !slices.Equal(got, want) {
 			t.Errorf("interfaces = %v, want %v", got, want)
@@ -298,8 +320,7 @@ func TestProcfsNetwork(t *testing.T) {
 	})
 
 	t.Run("every interface filtered out is an empty list, not a failed group", func(t *testing.T) {
-		p := newProcfs(minimal(), Options{NetExclude: regexp.MustCompile(`.`)})
-		raw, _ := p.Collect(context.Background())
+		_, raw := collectWith(t, minimal(), fakeStatfs(nil), Options{NetExclude: regexp.MustCompile(`.`)})
 		if raw.Network == nil || len(raw.Network) != 0 || raw.Errors[GroupNetwork] != nil {
 			t.Errorf("network = %#v, error %v; want an empty, non-nil list", raw.Network, raw.Errors[GroupNetwork])
 		}
@@ -351,6 +372,179 @@ func TestProcfsNetwork(t *testing.T) {
 			}
 			if raw.Host == nil || raw.CPU == nil || raw.Memory == nil {
 				t.Errorf("host %v, cpu %v, memory %v: the other groups should be served", raw.Errors[GroupHost], raw.Errors[GroupCPU], raw.Errors[GroupMemory])
+			}
+		})
+	}
+}
+
+func TestProcfsDisks(t *testing.T) {
+	x86 := os.DirFS("testdata/x86-8core")
+	mounts := func(ds []Disk) []string {
+		m := []string{}
+		for _, d := range ds {
+			m = append(m, d.Mount)
+		}
+		return m
+	}
+
+	t.Run("the x86 fixture keeps real filesystems, maps each to its whole disk, and counts 512-byte sectors in 64 bits", func(t *testing.T) {
+		const tib = 1 << 40
+		sizes := map[string][2]uint64{"/": {2 * tib, tib / 2}, "/media lib": {8 * tib, 5 * tib}}
+		_, raw := collectWith(t, x86, fakeStatfs(sizes), Options{})
+		if err := raw.Errors[GroupDisks]; err != nil {
+			t.Fatalf("disks error: %v", err)
+		}
+		nvme := &DiskIO{Device: "nvme0n1", ReadBytes: 98765432112 * 512, WriteBytes: 123456789012 * 512}
+		want := []Disk{
+			{Mount: "/", Device: "/dev/nvme0n1p2", FS: "ext4", TotalBytes: 2 * tib, FreeBytes: tib / 2, IO: nvme},
+			{Mount: "/boot/efi", Device: "/dev/nvme0n1p1", FS: "vfat", TotalBytes: 1000, FreeBytes: 250, IO: nvme},
+			{Mount: "/media lib", Device: "/dev/sda1", FS: "ext4", TotalBytes: 8 * tib, FreeBytes: 5 * tib,
+				IO: &DiskIO{Device: "sda", ReadBytes: 41234512 * 512, WriteBytes: 9876512 * 512}},
+			{Mount: "/var/lib/data", Device: "/dev/mapper/vg0-data", FS: "xfs", TotalBytes: 1000, FreeBytes: 250,
+				IO: &DiskIO{Device: "dm-0", ReadBytes: 22334455 * 512, WriteBytes: 33445566 * 512}},
+			{Mount: "/mnt/usb\tstick", Device: "/dev/sdb1", FS: "vfat", TotalBytes: 1000, FreeBytes: 250},
+			{Mount: "/mnt/backup", Device: "//nas/backup", FS: "cifs", TotalBytes: 1000, FreeBytes: 250},
+		}
+		if !slices.EqualFunc(raw.Disks, want, func(a, b Disk) bool {
+			return a.Mount == b.Mount && a.Device == b.Device && a.FS == b.FS && a.TotalBytes == b.TotalBytes &&
+				a.FreeBytes == b.FreeBytes && (a.IO == nil) == (b.IO == nil) && (a.IO == nil || *a.IO == *b.IO)
+		}) {
+			for _, d := range raw.Disks {
+				t.Logf("got  %+v %+v", d, d.IO)
+			}
+			t.Errorf("disks differ; want %v", mounts(want))
+		}
+	})
+
+	t.Run("an NVMe partition maps to its namespace and a SATA partition to its disk", func(t *testing.T) {
+		_, raw := collect(t, x86)
+		got := map[string]string{}
+		for _, d := range raw.Disks {
+			if d.IO != nil {
+				got[d.Device] = d.IO.Device
+			}
+		}
+		if got["/dev/nvme0n1p2"] != "nvme0n1" || got["/dev/sda1"] != "sda" {
+			t.Errorf("device mapping = %v", got)
+		}
+	})
+
+	t.Run("a bind mount of the same device is listed once, under the shorter mount point", func(t *testing.T) {
+		_, raw := collect(t, x86)
+		if m := mounts(raw.Disks); !slices.Contains(m, "/media lib") || slices.Contains(m, "/srv/exports/media") {
+			t.Errorf("mounts = %v, want /media lib and not its bind mount", m)
+		}
+	})
+
+	t.Run("a device that can't be mapped to a disk has no counters, so its rates are null rather than 0", func(t *testing.T) {
+		_, raw := collect(t, with(map[string]string{"proc/self/mounts": "/dev/root / ext4 rw 0 0\n/dev/sdz1 /z ext4 rw 0 0\n/dev/mapper/gone /g xfs rw 0 0\nserver:/export /nfs nfs4 rw 0 0\n"}))
+		if len(raw.Disks) != 4 {
+			t.Fatalf("disks = %+v, want 4", raw.Disks)
+		}
+		for _, d := range raw.Disks {
+			if d.IO != nil {
+				t.Errorf("%s (%s) has counters %+v, want none", d.Mount, d.Device, d.IO)
+			}
+		}
+	})
+
+	t.Run("a user's -disk-exclude replaces the defaults, matching the mount point or the fs type", func(t *testing.T) {
+		_, raw := collectWith(t, x86, fakeStatfs(nil), Options{DiskExclude: regexp.MustCompile(`^(vfat|cifs|/proc.*|/sys.*|/dev.*|/run.*)$`)})
+		want := []string{"/", "/snap/core22/1612", "/media lib", "/var/lib/data", "/var/lib/docker/overlay2/3f2a1b0c/merged"}
+		if got := mounts(raw.Disks); !slices.Equal(got, want) {
+			t.Errorf("mounts = %v\nwant     %v", got, want)
+		}
+	})
+
+	t.Run("every mount filtered out is an empty list, not a failed group", func(t *testing.T) {
+		_, raw := collectWith(t, x86, fakeStatfs(nil), Options{DiskExclude: regexp.MustCompile(`.`)})
+		if raw.Disks == nil || len(raw.Disks) != 0 || raw.Errors[GroupDisks] != nil {
+			t.Errorf("disks = %#v, error %v; want an empty, non-nil list", raw.Disks, raw.Errors[GroupDisks])
+		}
+	})
+
+	t.Run("a mount statfs can't read is left out and named in the error, and the other mounts are served", func(t *testing.T) {
+		_, raw := collectWith(t, x86, fakeStatfs(nil, "/mnt/backup", "/boot/efi"), Options{})
+		err := raw.Errors[GroupDisks]
+		if err == nil || !strings.Contains(err.Error(), "statfs /mnt/backup") || !strings.Contains(err.Error(), "statfs /boot/efi") {
+			t.Errorf("error = %v, want one naming both mounts", err)
+		}
+		if m := mounts(raw.Disks); len(m) != 4 || slices.Contains(m, "/mnt/backup") {
+			t.Errorf("mounts = %v, want the other four", m)
+		}
+	})
+
+	t.Run("an unreadable /proc/diskstats keeps the mounts without counters, and says why", func(t *testing.T) {
+		_, raw := collect(t, with(nil, "proc/diskstats"))
+		if err := raw.Errors[GroupDisks]; err == nil || !strings.Contains(err.Error(), "/proc/diskstats") {
+			t.Errorf("error = %v, want one naming /proc/diskstats", err)
+		}
+		if len(raw.Disks) != 1 || raw.Disks[0].IO != nil {
+			t.Errorf("disks = %+v, want / with no counters", raw.Disks)
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		fsys  fs.FS
+		wants []string
+	}{
+		{"an unreadable /proc/self/mounts fails the disks group", with(nil, "proc/self/mounts"), []string{"/proc/self/mounts"}},
+		{"a mounts line with too few fields fails the group, quoting the line",
+			with(map[string]string{"proc/self/mounts": "/dev/sda1 / ext4 rw 0 0\n/dev/sdb1 /b\n"}), []string{"/proc/self/mounts", "line 2", "/dev/sdb1 /b"}},
+	} {
+		t.Run(tc.name+", and the others are served", func(t *testing.T) {
+			_, raw := collect(t, tc.fsys)
+			err := raw.Errors[GroupDisks]
+			if err == nil || raw.Disks != nil {
+				t.Fatalf("disks = %+v, error %v; want nil and an error", raw.Disks, err)
+			}
+			for _, w := range tc.wants {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error %q doesn't mention %q", err, w)
+				}
+			}
+			if raw.Host == nil || raw.CPU == nil || raw.Memory == nil || raw.Network == nil {
+				t.Errorf("the other groups should be served: %v", raw.Errors)
+			}
+		})
+	}
+
+	t.Run("a missing /sys/block keeps the mounts without counters, and says why", func(t *testing.T) {
+		_, raw := collect(t, with(nil, "sys/block/sda/sda1/partition"))
+		if err := raw.Errors[GroupDisks]; err == nil || !strings.Contains(err.Error(), "reading /sys/block") {
+			t.Errorf("error = %v, want one naming /sys/block", err)
+		}
+		if len(raw.Disks) != 1 || raw.Disks[0].IO != nil {
+			t.Errorf("disks = %+v, want / with no counters", raw.Disks)
+		}
+	})
+
+	t.Run("a garbled /proc/diskstats line keeps the mounts without counters, quoting the line", func(t *testing.T) {
+		_, raw := collect(t, with(map[string]string{"proc/diskstats": "   8       0 sda 10 0\n"}))
+		if err := raw.Errors[GroupDisks]; err == nil || !strings.Contains(err.Error(), "8       0 sda 10 0") {
+			t.Errorf("error = %v, want one quoting the line", err)
+		}
+		if len(raw.Disks) != 1 || raw.Disks[0].IO != nil {
+			t.Errorf("disks = %+v, want / with no counters", raw.Disks)
+		}
+	})
+}
+
+func TestUnescapeMount(t *testing.T) {
+	for in, want := range map[string]string{
+		`/media/My\040Disk`:  "/media/My Disk",
+		`/mnt/tab\011name`:   "/mnt/tab\tname",
+		`/mnt/line\012break`: "/mnt/line\nbreak",
+		`/mnt/back\134slash`: `/mnt/back\slash`,
+		`/mnt/plain`:         "/mnt/plain",
+		`/mnt/trailing\04`:   `/mnt/trailing\04`,
+		`/mnt/not\9octal`:    `/mnt/not\9octal`,
+		`/mnt/two\040\040sp`: "/mnt/two  sp",
+	} {
+		t.Run(fmt.Sprintf("%s unescapes to %q", in, want), func(t *testing.T) {
+			if got := unescapeMount(in); got != want {
+				t.Errorf("got %q", got)
 			}
 		})
 	}
