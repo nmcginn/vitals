@@ -28,7 +28,7 @@
 - [ ] Spec numbers unchanged (budgets, defaults, timeouts, headers, flags)
 - [ ] Awkward cases tested (first sample, counter reset, group failure, empty lists, escaping, 80 columns — whichever apply)
 - [ ] Golden-file diffs read line by line
-- [ ] Go line count reported (target ~1,000–1,200 for v1)
+- [ ] Go line count reported, with the change since the last PR (an estimate, not a budget: decision 29)
 - [ ] `docs/ROADMAP.md` (Done line + Status), `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `README.md` updated as needed
 
 <!-- Follow-up audit: for every "follow-up", "later" or "TODO" above, would the reviewer expect it in this PR already? If so, it isn't a follow-up — finish it. -->
