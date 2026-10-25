@@ -70,7 +70,7 @@ Six groups. On macOS, collection calls Mach, sysctl, and IOKit directly through 
 | CPU | total and per-core usage %, model name; macOS also performance vs efficiency core counts, with per-core % tagged P or E | `host_processor_info(PROCESSOR_CPU_LOAD_INFO)` tick deltas; sysctl `machdep.cpu.brand_string`, `hw.perflevel0.*` / `hw.perflevel1.*` | `/proc/stat` deltas, `/proc/cpuinfo` |
 | Memory | total, available, used, swap total/used; macOS also wired, compressed, active, inactive, file-backed, and memory pressure level (normal / warn / critical) | `host_statistics64(HOST_VM_INFO64)`; sysctl `hw.memsize`, `hw.pagesize`, `vm.swapusage`, `kern.memorystatus_vm_pressure_level` | `/proc/meminfo` (used = total − available) |
 | Disks | per mount: device, mount point, fs type, total, used, free, used %; read/write bytes/s per physical device | `getfsstat` + `statfs`; IOKit `IOBlockStorageDriver` "Statistics" dictionary for byte counters | `/proc/self/mounts`, `statfs`, `/proc/diskstats` deltas |
-| Network | per interface: rx/tx bytes/s, rx/tx packets/s, cumulative totals | sysctl `NET_RT_IFLIST2` (`if_msghdr2` / `if_data64`). **Not** `getifaddrs`, whose `if_data` counters are 32-bit and wrap at 4 GiB | `/proc/net/dev` deltas |
+| Network | per interface: rx/tx bytes/s, rx/tx packets/s, cumulative totals | sysctl `IFMIB_IFDATA` (`ifmibdata` / `if_data64`), per decision 24. **Not** `NET_RT_IFLIST2` or `getifaddrs`, whose counters wrap at 4 GiB for unprivileged callers | `/proc/net/dev` deltas |
 | Temperatures | per sensor: label, °C | Not in v1 (v1.1 stretch) | `/sys/class/hwmon/*` |
 
 Collection rules:

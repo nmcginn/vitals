@@ -25,15 +25,17 @@ type darwin struct {
 	kindsErr error
 	// Reused each tick, so it isn't 4 KiB of garbage every 2s. Only the
 	// sampler goroutine calls Collect.
-	load [C.VITALS_MAX_CPUS]C.struct_vitals_cpu_load
+	load   [C.VITALS_MAX_CPUS]C.struct_vitals_cpu_load
+	ifaces [C.VITALS_MAX_IFACES]C.struct_vitals_iface
+	opts   Options
 }
 
 // New returns the collector for this OS.
-func New() Collector {
+func New(opts Options) Collector {
 	var s C.struct_vitals_host_static
 	C.vitals_host_static(&s)
 	hostname, _ := os.Hostname()
-	d := &darwin{info: HostInfo{
+	d := &darwin{opts: opts, info: HostInfo{
 		Hostname:  hostname,
 		OS:        "darwin",
 		OSVersion: C.GoString(&s.os_version[0]),
@@ -63,7 +65,7 @@ func (d *darwin) Static() HostInfo { return d.info }
 // Temperatures are absent on darwin in v1 (they need private API), so temps
 // is simply empty rather than an error.
 func (d *darwin) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupDisks, GroupNetwork)}
+	raw := Raw{Errors: pending(GroupDisks)}
 	var h C.struct_vitals_host
 	switch C.vitals_host(&h) {
 	case 0:
@@ -88,7 +90,35 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	if raw.Memory, err = memory(); err != nil {
 		raw.Errors[GroupMemory] = err
 	}
+	if raw.Network, err = d.network(); err != nil {
+		raw.Errors[GroupNetwork] = err
+	}
 	return raw, nil
+}
+
+func (d *darwin) network() ([]Interface, error) {
+	n := int(C.vitals_net(&d.ifaces[0], C.VITALS_MAX_IFACES))
+	switch {
+	case n == -1:
+		return nil, errors.New("reading sysctl net.link.generic.system.ifcount failed")
+	case n < 0:
+		return nil, errors.New("reading sysctl net.link.generic.ifdata failed")
+	case n > C.VITALS_MAX_IFACES:
+		return nil, fmt.Errorf("the kernel listed %d interfaces, more than the shim's %d", n, C.VITALS_MAX_IFACES)
+	}
+	ifs := make([]Interface, n)
+	for i := range ifs {
+		c := &d.ifaces[i]
+		ifs[i] = Interface{
+			Name:    C.GoString(&c.name[0]),
+			RxBytes: uint64(c.ibytes), TxBytes: uint64(c.obytes),
+			RxPackets: uint64(c.ipackets), TxPackets: uint64(c.opackets),
+		}
+		if ifs[i].Name == "" {
+			return nil, fmt.Errorf("sysctl net.link.generic.ifdata gave interface %d no name", i+1)
+		}
+	}
+	return keepIfaces(ifs, d.opts.NetExclude), nil
 }
 
 // memory returns the memory group, which may come with an error when only the

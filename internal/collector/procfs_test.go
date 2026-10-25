@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -20,6 +22,7 @@ func minimal() fstest.MapFS {
 		"proc/loadavg":              {Data: []byte("1.00 0.50 0.25 2/200 999\n")},
 		"proc/stat":                 {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
 		"proc/meminfo":              {Data: []byte("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 100 kB\nSwapFree: 75 kB\n")},
+		"proc/net/dev":              {Data: []byte(netDevHeader + "    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0\n  eth0:    5000      50    0    0    0     0          0         0     2000      20    0    0    0     0       0          0\n")},
 		"proc/sys/kernel/osrelease": {Data: []byte("6.12.48-amd64\n")},
 		"proc/sys/kernel/hostname":  {Data: []byte("box\n")},
 		"etc/os-release":            {Data: []byte("NAME=\"Debian GNU/Linux\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")},
@@ -39,7 +42,7 @@ func with(changes map[string]string, removals ...string) fs.FS {
 
 func collect(t *testing.T, fsys fs.FS) (*procfs, Raw) {
 	t.Helper()
-	p := newProcfs(fsys)
+	p := newProcfs(fsys, Options{})
 	raw, err := p.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
@@ -152,7 +155,7 @@ func TestProcfsHost(t *testing.T) {
 			got[g] = err.Error()
 		}
 		want := map[string]string{}
-		for _, g := range []string{GroupDisks, GroupNetwork, GroupTemps} {
+		for _, g := range []string{GroupDisks, GroupTemps} {
 			want[g] = "not implemented yet"
 		}
 		if !maps.Equal(got, want) {
@@ -253,6 +256,104 @@ func TestProcfsCPU(t *testing.T) {
 			t.Errorf("errors = %v, want host and cpu", raw.Errors)
 		}
 	})
+}
+
+const netDevHeader = "Inter-|   Receive                                                |  Transmit\n" +
+	" face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n"
+
+func TestProcfsNetwork(t *testing.T) {
+	netDev := func(lines ...string) fs.FS {
+		return with(map[string]string{"proc/net/dev": netDevHeader + strings.Join(lines, "\n") + "\n"})
+	}
+	names := func(ifs []Interface) []string {
+		var n []string
+		for _, i := range ifs {
+			n = append(n, i.Name)
+		}
+		return n
+	}
+
+	t.Run("the default list drops loopback, docker, veth, and bridges, and keeps the rest with 64-bit totals", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/x86-8core"))
+		if err := raw.Errors[GroupNetwork]; err != nil {
+			t.Fatalf("network error: %v", err)
+		}
+		want := []Interface{
+			{Name: "enp3s0", RxBytes: 9876543210123, RxPackets: 7012345678, TxBytes: 6543210987, TxPackets: 3012345678},
+			{Name: "wg-home", RxBytes: 523411200, RxPackets: 401233, TxBytes: 98112334, TxPackets: 377120},
+			{Name: "tailscale0", RxBytes: 31220144, RxPackets: 52114, TxBytes: 11902376, TxPackets: 48871},
+		}
+		if !slices.Equal(raw.Network, want) {
+			t.Errorf("network = %+v\nwant      %+v", raw.Network, want)
+		}
+	})
+
+	t.Run("a user's -net-exclude replaces the default list rather than adding to it", func(t *testing.T) {
+		p := newProcfs(os.DirFS("testdata/x86-8core"), Options{NetExclude: regexp.MustCompile(`^enp3s0$`)})
+		raw, _ := p.Collect(context.Background())
+		want := []string{"lo", "wg-home", "docker0", "veth3f2a1b0", "br-5e1f0c2d9a7b", "tailscale0"}
+		if got := names(raw.Network); !slices.Equal(got, want) {
+			t.Errorf("interfaces = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("every interface filtered out is an empty list, not a failed group", func(t *testing.T) {
+		p := newProcfs(minimal(), Options{NetExclude: regexp.MustCompile(`.`)})
+		raw, _ := p.Collect(context.Background())
+		if raw.Network == nil || len(raw.Network) != 0 || raw.Errors[GroupNetwork] != nil {
+			t.Errorf("network = %#v, error %v; want an empty, non-nil list", raw.Network, raw.Errors[GroupNetwork])
+		}
+	})
+
+	t.Run("a counter that butts up against the colon still parses", func(t *testing.T) {
+		// Kernels before 2.6.37 printed "%6s:%8lu", with no space after the colon.
+		_, raw := collect(t, netDev("  eth0:4294968296   12345    0    0    0     0          0         0 4294967396   23456    0    0    0     0       0          0"))
+		want := []Interface{{Name: "eth0", RxBytes: 4294968296, RxPackets: 12345, TxBytes: 4294967396, TxPackets: 23456}}
+		if !slices.Equal(raw.Network, want) {
+			t.Errorf("network = %+v, error %v\nwant      %+v", raw.Network, raw.Errors[GroupNetwork], want)
+		}
+	})
+
+	t.Run("a machine with only loopback reports an empty list", func(t *testing.T) {
+		_, raw := collect(t, netDev("    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0"))
+		if raw.Network == nil || len(raw.Network) != 0 {
+			t.Errorf("network = %#v, want []", raw.Network)
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		fsys  fs.FS
+		wants []string
+	}{
+		{"an unreadable /proc/net/dev fails the network group, naming the file", with(nil, "proc/net/dev"), []string{"/proc/net/dev"}},
+		{"a line with too few counters fails the group, quoting the line",
+			netDev("  eth0:    5000      50    0    0"), []string{"/proc/net/dev", "line 3", "eth0:    5000"}},
+		{"a line without a colon fails the group", netDev("  eth0     5000      50    0    0    0     0          0         0     2000      20    0    0    0     0       0          0"),
+			[]string{"/proc/net/dev", "line 3"}},
+		{"a counter that isn't a number fails the group, naming the interface and column",
+			netDev("  eth0:    5000      50    0    0    0     0          0         0     -2000      20    0    0    0     0       0          0"),
+			[]string{"/proc/net/dev", "eth0", "column 9", `"-2000"`}},
+	} {
+		t.Run(tc.name+", and the others are served", func(t *testing.T) {
+			_, raw := collect(t, tc.fsys)
+			err := raw.Errors[GroupNetwork]
+			if err == nil {
+				t.Fatalf("network = %+v, want an error", raw.Network)
+			}
+			for _, w := range tc.wants {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error %q doesn't mention %q", err, w)
+				}
+			}
+			if raw.Network != nil {
+				t.Errorf("network = %+v, want nil for a failed group", raw.Network)
+			}
+			if raw.Host == nil || raw.CPU == nil || raw.Memory == nil {
+				t.Errorf("host %v, cpu %v, memory %v: the other groups should be served", raw.Errors[GroupHost], raw.Errors[GroupCPU], raw.Errors[GroupMemory])
+			}
+		})
+	}
 }
 
 func TestProcfsMemory(t *testing.T) {

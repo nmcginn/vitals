@@ -56,6 +56,18 @@ struct vitals_memory {
 	int32_t pressure_ok; // 0 when the pressure sysctl failed
 };
 
+// More interfaces than any Mac has, even with a dozen VPN tunnels.
+#define VITALS_MAX_IFACES 128
+
+// One interface's name and 64-bit counters, from its IFMIB_IFDATA record.
+struct vitals_iface {
+	char name[16];
+	uint64_t ibytes;
+	uint64_t obytes;
+	uint64_t ipackets;
+	uint64_t opackets;
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -74,5 +86,10 @@ int vitals_cpu_nodes(struct vitals_cpu_node *out, int max);
 // if host_statistics64 failed, or -4 if vm.swapusage failed. A failed pressure
 // sysctl is not a failure here: it sets pressure_ok to 0.
 int vitals_memory(struct vitals_memory *out);
+
+// Copies up to max interfaces' counters into out. Returns the number of
+// interfaces, which may exceed max, -1 if the IFMIB_IFCOUNT sysctl failed, or
+// -2 if an interface's IFMIB_IFDATA sysctl failed other than for a gap.
+int vitals_net(struct vitals_iface *out, int max);
 
 #endif

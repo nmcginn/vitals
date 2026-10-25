@@ -14,27 +14,19 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M4 (memory) in review.
-- Next up: M5.
-- Open PRs waiting on review: the M4 memory PR.
+- Current: M5 (network) in review.
+- Next up: M6.
+- Open PRs waiting on review: the M5 network PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **The line budget.** After M4, non-test Go is 1,401 lines (plus a 249-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Three groups on two platforms and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M5 onwards should squeeze.
+- **The line budget.** After M5, non-test Go is 1,506 lines (plus a 307-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Two groups (disks on both platforms, Linux temperatures) and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M6 onwards should squeeze.
 
 ---
 
 ## Open
-
-### M5: Network
-
-- [ ] **Per-interface throughput and totals, with 64-bit counters that never wrap at 4 GiB.**
-  *Needs:* M2.
-  Darwin: sysctl `NET_RT_IFLIST2`, walking `if_msghdr2` records for `if_data64` in the shim (never `getifaddrs`). Linux: `/proc/net/dev`. The default interface exclude list and `-net-exclude` (a regex that replaces the default list), in `filter.go`. Rates and packet rates are computed in the sampler.
-
-  *Acceptance:* the sampler computes rx/tx bytes/s and packets/s from deltas, giving `null` on the first sample and on a backwards counter. A test with totals moving from 4,294,967,000 to 4,294,968,000 (across 2³²) gives a positive rate, and the total exceeds 2³². Filter tests: each default pattern (`lo`, `lo0`, `veth*`, `docker*`, `br-*`, `utun*`, `awdl*`, `llw*`, `bridge*`, `anpi*`) is excluded, and `en0`, `eth0`, and `tailscale0` are kept. `-net-exclude '^en1$'` replaces the defaults rather than adding to them. All interfaces filtered out gives `"network": []`, not `null` or an error. Linux fixtures include an interface name with a dash and counters above 2³². The darwin integration test checks at least one interface with non-decreasing totals across two samples. *(maintainer)* totals keep counting past 4 GiB during a large transfer.
 
 ### M6: Disks
 
@@ -101,6 +93,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M2: First light.** The host group on darwin (shim + `darwin_conv.go`) and Linux (`procfs.go` over `fs.FS`), `main.go` with every flag, the hardened server, `internal/server` with `/healthz`, `/api/v1/stats`, and `/api/v1/history` (decisions 16, 17, 18).
 - **M3: CPU.** Total and per-core usage on both platforms, the model name, and the darwin P/E split from `IODeviceTree:/cpus` checked against `hw.perflevel` (decisions 20, 21).
 - **M4: Memory.** Memory and swap on both platforms, with darwin's Activity Monitor formula, wired, compressed, active, inactive, file-backed, and pressure (decisions 22, 23).
+- **M5: Network.** Per-interface totals and rates on both platforms, darwin from `IFMIB_IFDATA` for true 64-bit counters, and the default interface list with `-net-exclude` in `filter.go` (decisions 24, 25).
 
 ---
 
