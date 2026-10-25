@@ -66,6 +66,23 @@ func TestDarwinCollect(t *testing.T) {
 			}
 			t.Logf("collection %d: %d cores, kinds %v", i+1, cores, c.Darwin.CoreKinds)
 		}
+		for i, raw := range []Raw{first, second} {
+			m := raw.Memory
+			if raw.Errors[GroupMemory] != nil || m == nil || m.Darwin == nil {
+				t.Fatalf("collection %d: memory error %v", i+1, raw.Errors[GroupMemory])
+			}
+			if m.TotalBytes == 0 || m.UsedBytes > m.TotalBytes || m.AvailableBytes > m.TotalBytes || m.UsedBytes+m.AvailableBytes != m.TotalBytes {
+				t.Errorf("collection %d: total %d, used %d, available %d", i+1, m.TotalBytes, m.UsedBytes, m.AvailableBytes)
+			}
+			if m.SwapUsedBytes > m.SwapTotalBytes {
+				t.Errorf("collection %d: swap used %d of %d", i+1, m.SwapUsedBytes, m.SwapTotalBytes)
+			}
+			if p := m.Darwin.Pressure; p == nil || (*p != "normal" && *p != "warn" && *p != "critical") {
+				t.Errorf("collection %d: pressure %v, want normal, warn, or critical", i+1, p)
+			}
+			t.Logf("collection %d: total %d, used %d, wired %d, compressed %d, swap %d of %d, pressure %s", i+1,
+				m.TotalBytes, m.UsedBytes, m.Darwin.WiredBytes, m.Darwin.CompressedBytes, m.SwapUsedBytes, m.SwapTotalBytes, *m.Darwin.Pressure)
+		}
 		if len(second.CPU.PerCore) != len(first.CPU.PerCore) {
 			t.Fatalf("core count changed: %d then %d", len(first.CPU.PerCore), len(second.CPU.PerCore))
 		}

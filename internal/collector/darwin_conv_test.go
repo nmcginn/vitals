@@ -80,6 +80,119 @@ func TestCPUFromLoad(t *testing.T) {
 	})
 }
 
+func TestMemoryFromVM(t *testing.T) {
+	// A 16 GiB Apple Silicon Mac (16 KiB pages) under light load: the shape of
+	// host_statistics64 and vm.swapusage there, with page counts written to
+	// match rather than captured. 16 GiB is 1,048,576 pages.
+	mini := func() vmMemory {
+		return vmMemory{
+			MemSize: 16 << 30, PageSize: 16384,
+			Active: 380_000, Inactive: 360_000, Wire: 150_000, Purgeable: 10_000,
+			Compressor: 40_000, Internal: 400_000, External: 300_000,
+			SwapTotal: 2 << 30, SwapUsed: 1 << 30,
+			PressureLevel: 1, PressureOK: true,
+		}
+	}
+
+	t.Run("used is internal minus purgeable, plus wired and compressed, and available is the rest", func(t *testing.T) {
+		m, err := memoryFromVM(mini())
+		if err != nil {
+			t.Fatal(err)
+		}
+		used := uint64(400_000-10_000+150_000+40_000) * 16384
+		want := Memory{TotalBytes: 16 << 30, UsedBytes: used, AvailableBytes: 16<<30 - used, SwapTotalBytes: 2 << 30, SwapUsedBytes: 1 << 30}
+		got := *m
+		got.Darwin = nil
+		if got != want {
+			t.Errorf("memory = %+v\nwant     %+v", got, want)
+		}
+		d := m.Darwin
+		if d == nil || d.WiredBytes != 150_000*16384 || d.CompressedBytes != 40_000*16384 || d.ActiveBytes != 380_000*16384 ||
+			d.InactiveBytes != 360_000*16384 || d.FileBackedBytes != 300_000*16384 {
+			t.Errorf("darwin = %+v", d)
+		}
+	})
+
+	t.Run("2²⁰ pages of 16 KiB multiply in 64 bits rather than wrapping at 4 GiB", func(t *testing.T) {
+		v := mini()
+		v.MemSize, v.Wire, v.Internal, v.Purgeable, v.Compressor = 32<<30, 1<<20, 0, 0, 0
+		m, err := memoryFromVM(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Darwin.WiredBytes != 16<<30 || m.UsedBytes != 16<<30 {
+			t.Errorf("wired = %d, used = %d, want %d", m.Darwin.WiredBytes, m.UsedBytes, uint64(16<<30))
+		}
+	})
+
+	t.Run("no swap in use is zeros, not an error", func(t *testing.T) {
+		v := mini()
+		v.SwapTotal, v.SwapUsed = 0, 0
+		m, err := memoryFromVM(v)
+		if err != nil || m.SwapTotalBytes != 0 || m.SwapUsedBytes != 0 {
+			t.Errorf("memory = %+v, err %v", m, err)
+		}
+	})
+
+	for level, want := range map[int32]string{1: "normal", 2: "warn", 4: "critical"} {
+		t.Run(fmt.Sprintf("pressure level %d is %s", level, want), func(t *testing.T) {
+			v := mini()
+			v.PressureLevel = level
+			m, err := memoryFromVM(v)
+			if err != nil || m.Darwin.Pressure == nil || *m.Darwin.Pressure != want {
+				t.Errorf("pressure = %v, err %v, want %s", m.Darwin.Pressure, err, want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name, want string
+		level      int32
+		ok         bool
+	}{
+		{"pressure level 0 is an error, not a guess, and the figures are kept", "is 0", 0, true},
+		{"pressure level 3 is an error, not a guess, and the figures are kept", "is 3", 3, true},
+		{"a failed pressure sysctl is an error, and the figures are kept", "pressure is unknown", 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := mini()
+			v.PressureLevel, v.PressureOK = tc.level, tc.ok
+			m, err := memoryFromVM(v)
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "kern.memorystatus_vm_pressure_level") {
+				t.Errorf("err = %v, want one naming the sysctl and %q", err, tc.want)
+			}
+			if m == nil || m.Darwin == nil || m.TotalBytes != 16<<30 || m.Darwin.WiredBytes == 0 {
+				t.Fatalf("memory = %+v, want the figures kept", m)
+			}
+			if m.Darwin.Pressure != nil {
+				t.Errorf("pressure = %q, want nil", *m.Darwin.Pressure)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name, want string
+		change     func(*vmMemory)
+	}{
+		{"a zero hw.memsize is an error", "hw.memsize", func(v *vmMemory) { v.MemSize = 0 }},
+		{"a zero page size is an error", "hw.pagesize", func(v *vmMemory) { v.PageSize = 0 }},
+		{"more purgeable than internal pages is an error, not a wrapped count", "purgeable", func(v *vmMemory) { v.Purgeable = v.Internal + 1 }},
+		{"used beyond hw.memsize is an error, not a wrapped available", "more than hw.memsize", func(v *vmMemory) { v.Wire = 1 << 20 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := mini()
+			tc.change(&v)
+			m, err := memoryFromVM(v)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want one mentioning %q", err, tc.want)
+			}
+			if m != nil {
+				t.Errorf("memory = %+v alongside an error, want nil", m)
+			}
+		})
+	}
+}
+
 func TestCoreKinds(t *testing.T) {
 	// Captured from IODeviceTree:/cpus on an M5 Mac (4P + 6E), in registry
 	// order: the efficiency cores come first, so tagging by position against

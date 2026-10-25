@@ -14,27 +14,19 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M3 (CPU) in review.
-- Next up: M4.
-- Open PRs waiting on review: the M3 CPU PR.
+- Current: M4 (memory) in review.
+- Next up: M5.
+- Open PRs waiting on review: the M4 memory PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **The line budget.** After M3, non-test Go is 1,250 lines (plus a 178-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Four groups on two platforms and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M4 onwards should squeeze.
+- **The line budget.** After M4, non-test Go is 1,401 lines (plus a 249-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. Three groups on two platforms and three renderers remain; at the pace so far (about 240 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M5 onwards should squeeze.
 
 ---
 
 ## Open
-
-### M4: Memory
-
-- [ ] **Memory and swap, with wired, compressed, and pressure on the Mac.**
-  *Needs:* M2.
-  Darwin: `host_statistics64(HOST_VM_INFO64)`, sysctl `hw.memsize`, `hw.pagesize`, `vm.swapusage`, and `kern.memorystatus_vm_pressure_level`, with used/available per the PLAN assumption. Also wired, compressed, active, inactive, and file-backed, all in bytes. Linux: `/proc/meminfo`, with used = total − available.
-
-  *Acceptance:* darwin conversion tests (on Linux) use a captured `vm_statistics64` fixture. Used and available match the PLAN formula exactly. Pages × page size is computed in 64 bits, so a 16 KiB page × 2²⁰ pages doesn't overflow. Pressure levels 1, 2, and 4 map to `normal`, `warn`, and `critical`, and any other value maps to an error in `errors.memory` rather than a guess. Linux fixtures cover a normal `meminfo`, one with `SwapTotal: 0 kB`, and an old kernel without `MemAvailable` (error recorded, other fields served). The darwin integration test checks total > 0, used ≤ total, available ≤ total, and that pressure is one of the three strings. *(maintainer)* used, wired, compressed, and pressure agree with Activity Monitor to within 5% under steady load.
 
 ### M5: Network
 
@@ -108,6 +100,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M1: The model.** `collector.Raw`/`HostInfo`, `Snapshot` with nullable rates, the sampler (80% timeout, skip-on-overrun, rates over actual elapsed time), the ring buffer and `Store`, `render.JSON` with goldens, and `make golden` (decisions 13, 14, 15).
 - **M2: First light.** The host group on darwin (shim + `darwin_conv.go`) and Linux (`procfs.go` over `fs.FS`), `main.go` with every flag, the hardened server, `internal/server` with `/healthz`, `/api/v1/stats`, and `/api/v1/history` (decisions 16, 17, 18).
 - **M3: CPU.** Total and per-core usage on both platforms, the model name, and the darwin P/E split from `IODeviceTree:/cpus` checked against `hw.perflevel` (decisions 20, 21).
+- **M4: Memory.** Memory and swap on both platforms, with darwin's Activity Monitor formula, wired, compressed, active, inactive, file-backed, and pressure (decisions 22, 23).
 
 ---
 

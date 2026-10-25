@@ -105,13 +105,15 @@ type Memory struct {
 	Darwin         *MemoryDarwin `json:"darwin,omitempty"`
 }
 
+// MemoryDarwin's Pressure is normal, warn, or critical, and nil when the kernel
+// reported a level we don't know; Errors then says which (decision 22).
 type MemoryDarwin struct {
-	WiredBytes      uint64 `json:"wired_bytes"`
-	CompressedBytes uint64 `json:"compressed_bytes"`
-	ActiveBytes     uint64 `json:"active_bytes"`
-	InactiveBytes   uint64 `json:"inactive_bytes"`
-	FileBackedBytes uint64 `json:"file_backed_bytes"`
-	Pressure        string `json:"pressure"` // normal, warn, or critical
+	WiredBytes      uint64  `json:"wired_bytes"`
+	CompressedBytes uint64  `json:"compressed_bytes"`
+	ActiveBytes     uint64  `json:"active_bytes"`
+	InactiveBytes   uint64  `json:"inactive_bytes"`
+	FileBackedBytes uint64  `json:"file_backed_bytes"`
+	Pressure        *string `json:"pressure"`
 }
 
 // Disk is one mount. IO is nil when the mount can't be mapped to a physical

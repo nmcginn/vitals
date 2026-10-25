@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func newProcfs(fsys fs.FS) *procfs {
 func (p *procfs) Static() HostInfo { return p.info }
 
 func (p *procfs) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupMemory, GroupDisks, GroupNetwork, GroupTemps)}
+	raw := Raw{Errors: pending(GroupDisks, GroupNetwork, GroupTemps)}
 	// The host and CPU groups both read /proc/stat, which on a big machine is
 	// mostly one long intr line, so it's read once.
 	if stat, err := p.read("proc/stat"); err != nil {
@@ -53,7 +54,60 @@ func (p *procfs) Collect(ctx context.Context) (Raw, error) {
 			raw.CPU = &c
 		}
 	}
+	if m, err := p.memory(); err != nil {
+		raw.Errors[GroupMemory] = err
+	} else {
+		raw.Memory = &m
+	}
 	return raw, nil
+}
+
+// memory reads /proc/meminfo, whose values are in KiB despite the "kB". Used is
+// total − MemAvailable, the kernel's own estimate of what can be had without
+// swapping. Kernels before 3.14 lack it, and adding up free, buffers, and cache
+// instead would be a guess the kernel itself warns against, so it's an error.
+func (p *procfs) memory() (Memory, error) {
+	s, err := p.read("proc/meminfo")
+	if err != nil {
+		return Memory{}, err
+	}
+	keys := []string{"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"}
+	got := make(map[string]uint64, len(keys))
+	for l := range strings.Lines(s) {
+		k, v, _ := strings.Cut(l, ":")
+		if !slices.Contains(keys, k) {
+			continue
+		}
+		f := strings.Fields(v)
+		if len(f) == 0 {
+			return Memory{}, fmt.Errorf("parsing /proc/meminfo: %s has no value", k)
+		}
+		n, err := strconv.ParseUint(f[0], 10, 64)
+		if err != nil {
+			return Memory{}, fmt.Errorf("parsing /proc/meminfo: %s is %q, not a size in kB", k, strings.TrimSpace(v))
+		}
+		got[k] = n * 1024
+	}
+	for _, k := range keys {
+		if _, ok := got[k]; !ok {
+			if k == "MemAvailable" {
+				return Memory{}, errors.New("parsing /proc/meminfo: no MemAvailable line; it needs Linux 3.14 or later")
+			}
+			return Memory{}, fmt.Errorf("parsing /proc/meminfo: no %s line", k)
+		}
+	}
+	m := Memory{TotalBytes: got["MemTotal"], AvailableBytes: got["MemAvailable"], SwapTotalBytes: got["SwapTotal"]}
+	// Subtracting past zero would wrap to a huge uint64, so a part bigger than
+	// its whole is an error, not a number.
+	switch {
+	case m.AvailableBytes > m.TotalBytes:
+		return Memory{}, fmt.Errorf("parsing /proc/meminfo: MemAvailable %d kB is more than MemTotal %d kB", m.AvailableBytes/1024, m.TotalBytes/1024)
+	case got["SwapFree"] > m.SwapTotalBytes:
+		return Memory{}, fmt.Errorf("parsing /proc/meminfo: SwapFree %d kB is more than SwapTotal %d kB", got["SwapFree"]/1024, m.SwapTotalBytes/1024)
+	}
+	m.UsedBytes = m.TotalBytes - m.AvailableBytes
+	m.SwapUsedBytes = m.SwapTotalBytes - got["SwapFree"]
+	return m, nil
 }
 
 func (p *procfs) read(name string) (string, error) {

@@ -29,6 +29,14 @@ static int32_t i32(const char *name) {
 	return v;
 }
 
+// hw.pagesize is an int on some kernels and a quad on others; starting from 0,
+// a 4-byte copy into the low half of a little-endian uint64_t is the same value.
+static int u64(const char *name, uint64_t *out) {
+	*out = 0;
+	size_t len = sizeof *out;
+	return sysctlbyname(name, out, &len, NULL, 0);
+}
+
 void vitals_host_static(struct vitals_host_static *out) {
 	str("kern.osproductversion", out->os_version, sizeof out->os_version);
 	str("kern.osrelease", out->kernel, sizeof out->kernel);
@@ -121,4 +129,43 @@ int vitals_cpu_nodes(struct vitals_cpu_node *out, int max) {
 	}
 	IOObjectRelease(it);
 	return n;
+}
+
+int vitals_memory(struct vitals_memory *out) {
+	if (u64("hw.memsize", &out->memsize) != 0) {
+		return -1;
+	}
+	if (u64("hw.pagesize", &out->pagesize) != 0) {
+		return -2;
+	}
+	// As in vitals_cpu_load, the host port reference is dropped every tick.
+	mach_port_t host = mach_host_self();
+	vm_statistics64_data_t vm;
+	mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+	kern_return_t kr = host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count);
+	mach_port_deallocate(mach_task_self(), host);
+	if (kr != KERN_SUCCESS) {
+		return -3;
+	}
+	out->active_count = vm.active_count;
+	out->inactive_count = vm.inactive_count;
+	out->wire_count = vm.wire_count;
+	out->purgeable_count = vm.purgeable_count;
+	out->compressor_page_count = vm.compressor_page_count;
+	out->internal_page_count = vm.internal_page_count;
+	out->external_page_count = vm.external_page_count;
+
+	struct xsw_usage swap;
+	size_t len = sizeof swap;
+	if (sysctlbyname("vm.swapusage", &swap, &len, NULL, 0) != 0) {
+		return -4;
+	}
+	out->swap_total = swap.xsu_total;
+	out->swap_used = swap.xsu_used;
+
+	int level = 0;
+	len = sizeof level;
+	out->pressure_ok = sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &len, NULL, 0) == 0;
+	out->pressure_level = level;
+	return 0;
 }
