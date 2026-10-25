@@ -7,6 +7,11 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <mach/mach.h>
+#include <errno.h>
+#include <net/if.h>
+#include <net/if_mib.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
 
@@ -168,4 +173,40 @@ int vitals_memory(struct vitals_memory *out) {
 	out->pressure_ok = sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &len, NULL, 0) == 0;
 	out->pressure_level = level;
 	return 0;
+}
+
+// IFMIB_IFDATA rather than NET_RT_IFLIST2 or getifaddrs: on macOS 26 those two
+// give unprivileged callers byte counts wrapped at 2^32 and rounded to 1 KiB,
+// while this gives the same 64-bit counts as netstat (decision 24). Indexes
+// run from 1 to IFMIB_IFCOUNT, and a removed interface leaves a gap that
+// answers ENOENT.
+int vitals_net(struct vitals_iface *out, int max) {
+	int count_mib[5] = {CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_SYSTEM, IFMIB_IFCOUNT};
+	int count = 0;
+	size_t len = sizeof count;
+	if (sysctl(count_mib, 5, &count, &len, NULL, 0) != 0) {
+		return -1;
+	}
+	int n = 0;
+	for (int i = 1; i <= count; i++) {
+		int mib[6] = {CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_IFDATA, i, IFDATA_GENERAL};
+		struct ifmibdata md;
+		len = sizeof md;
+		if (sysctl(mib, 6, &md, &len, NULL, 0) != 0) {
+			if (errno == ENOENT) {
+				continue;
+			}
+			return -2;
+		}
+		if (n < max) {
+			memcpy(out[n].name, md.ifmd_name, sizeof out[n].name);
+			out[n].name[sizeof out[n].name - 1] = '\0';
+			out[n].ibytes = md.ifmd_data.ifi_ibytes;
+			out[n].obytes = md.ifmd_data.ifi_obytes;
+			out[n].ipackets = md.ifmd_data.ifi_ipackets;
+			out[n].opackets = md.ifmd_data.ifi_opackets;
+		}
+		n++;
+	}
+	return n;
 }

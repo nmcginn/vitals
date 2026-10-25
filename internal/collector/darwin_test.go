@@ -11,7 +11,7 @@ import (
 // The darwin integration test: the live OS through the shim. It checks
 // invariants, never specific values, so it holds on a CI VM (decision 5).
 func TestDarwinCollect(t *testing.T) {
-	c := New()
+	c := New(Options{})
 
 	t.Run("static fields are read from sysctl", func(t *testing.T) {
 		info := c.Static()
@@ -21,7 +21,7 @@ func TestDarwinCollect(t *testing.T) {
 		}
 	})
 
-	t.Run("two collections give sane, non-decreasing host and CPU groups", func(t *testing.T) {
+	t.Run("two collections give sane, non-decreasing host, CPU, memory, and network groups", func(t *testing.T) {
 		first, err := c.Collect(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -82,6 +82,35 @@ func TestDarwinCollect(t *testing.T) {
 			}
 			t.Logf("collection %d: total %d, used %d, wired %d, compressed %d, swap %d of %d, pressure %s", i+1,
 				m.TotalBytes, m.UsedBytes, m.Darwin.WiredBytes, m.Darwin.CompressedBytes, m.SwapUsedBytes, m.SwapTotalBytes, *m.Darwin.Pressure)
+		}
+		for i, raw := range []Raw{first, second} {
+			if err := raw.Errors[GroupNetwork]; err != nil || len(raw.Network) == 0 {
+				t.Fatalf("collection %d: network %v, error %v; want at least one interface", i+1, raw.Network, err)
+			}
+			for _, n := range raw.Network {
+				if defaultNetExclude.MatchString(n.Name) {
+					t.Errorf("collection %d: %s should have been filtered out", i+1, n.Name)
+				}
+			}
+			t.Logf("collection %d: %+v", i+1, raw.Network)
+		}
+		before := map[string]Interface{}
+		for _, n := range first.Network {
+			before[n.Name] = n
+		}
+		matched := 0
+		for _, b := range second.Network {
+			a, ok := before[b.Name]
+			if !ok {
+				continue
+			}
+			matched++
+			if b.RxBytes < a.RxBytes || b.TxBytes < a.TxBytes || b.RxPackets < a.RxPackets || b.TxPackets < a.TxPackets {
+				t.Errorf("%s counters went backwards: %+v then %+v", b.Name, a, b)
+			}
+		}
+		if matched == 0 {
+			t.Errorf("no interface was in both collections: %v then %v", first.Network, second.Network)
 		}
 		if len(second.CPU.PerCore) != len(first.CPU.PerCore) {
 			t.Fatalf("core count changed: %d then %d", len(first.CPU.PerCore), len(second.CPU.PerCore))

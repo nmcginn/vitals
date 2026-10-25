@@ -18,11 +18,12 @@ import (
 // slash, as fs.FS requires.
 type procfs struct {
 	fsys fs.FS
+	opts Options
 	info HostInfo
 }
 
-func newProcfs(fsys fs.FS) *procfs {
-	p := &procfs{fsys: fsys}
+func newProcfs(fsys fs.FS, opts Options) *procfs {
+	p := &procfs{fsys: fsys, opts: opts}
 	p.info = HostInfo{
 		Hostname:  p.line("proc/sys/kernel/hostname"),
 		OS:        "linux",
@@ -37,7 +38,7 @@ func newProcfs(fsys fs.FS) *procfs {
 func (p *procfs) Static() HostInfo { return p.info }
 
 func (p *procfs) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupDisks, GroupNetwork, GroupTemps)}
+	raw := Raw{Errors: pending(GroupDisks, GroupTemps)}
 	// The host and CPU groups both read /proc/stat, which on a big machine is
 	// mostly one long intr line, so it's read once.
 	if stat, err := p.read("proc/stat"); err != nil {
@@ -59,7 +60,45 @@ func (p *procfs) Collect(ctx context.Context) (Raw, error) {
 	} else {
 		raw.Memory = &m
 	}
+	if n, err := p.network(); err != nil {
+		raw.Errors[GroupNetwork] = err
+	} else {
+		raw.Network = keepIfaces(n, p.opts.NetExclude)
+	}
 	return raw, nil
+}
+
+// network reads /proc/net/dev: two header lines, then one line per interface,
+// "name: rx bytes, packets, errs, drop, fifo, frame, compressed, multicast,
+// then tx bytes, packets, errs, drop, fifo, colls, carrier, compressed". The
+// counters are 64-bit on every kernel this runs on. A big counter can butt up
+// against the colon, so the name is cut there; Linux forbids ':' in names.
+func (p *procfs) network() ([]Interface, error) {
+	s, err := p.read("proc/net/dev")
+	if err != nil {
+		return nil, err
+	}
+	var ifs []Interface
+	n := 0
+	for l := range strings.Lines(s) {
+		if n++; n <= 2 {
+			continue
+		}
+		name, rest, ok := strings.Cut(l, ":")
+		name = strings.TrimSpace(name)
+		f := strings.Fields(rest)
+		if !ok || name == "" || len(f) < 16 {
+			return nil, fmt.Errorf("parsing /proc/net/dev: line %d is %q, want a name, a colon, and 16 counters", n, strings.TrimSpace(l))
+		}
+		var v [4]uint64
+		for i, col := range []int{0, 1, 8, 9} {
+			if v[i], err = strconv.ParseUint(f[col], 10, 64); err != nil {
+				return nil, fmt.Errorf("parsing /proc/net/dev: %s column %d is %q, not a counter", name, col+1, f[col])
+			}
+		}
+		ifs = append(ifs, Interface{Name: name, RxBytes: v[0], RxPackets: v[1], TxBytes: v[2], TxPackets: v[3]})
+	}
+	return ifs, nil
 }
 
 // memory reads /proc/meminfo, whose values are in KiB despite the "kB". Used is

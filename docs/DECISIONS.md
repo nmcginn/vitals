@@ -97,3 +97,12 @@ Used is (internal − purgeable + wired + compressor) pages × `hw.pagesize`, pe
 ### 23. Linux memory needs `MemAvailable`
 
 Used is `MemTotal` − `MemAvailable`, and swap used is `SwapTotal` − `SwapFree`, all from `/proc/meminfo` in KiB × 1024. A kernel without `MemAvailable` (before 3.14) fails the memory group with a message saying so, while the other groups are served. Estimating it from free + buffers + cache would be a guess the kernel itself warns against. A missing swap line is an error too, not zero swap. Available above total, or swap free above swap total, is an error rather than a wrapped `uint64`.
+
+### 24. Darwin network counters come from `IFMIB_IFDATA`, not `NET_RT_IFLIST2`
+
+SPEC names `NET_RT_IFLIST2`, but on macOS 26 it gives an unprivileged process byte counts wrapped at 2³² and rounded down to 1 KiB, the same as `getifaddrs`. On an Apple M5 MacBook Air it reported `en0` rx as 816,700,416 bytes while `netstat` said 73,831,149,270. That fails SPEC's own "totals keep counting past 4 GiB", and the rounding made a 2s byte rate read 0 while packets moved. The public `IFMIB_IFDATA` sysctl (`net.link.generic.ifdata.<index>.general`, `<net/if_mib.h>`) returns exact 64-bit counts that match `netstat` to the byte. The shim reads `IFMIB_IFCOUNT`, then one `ifmibdata` per index, skipping the `ENOENT` gaps that removed interfaces leave. Any other failure fails the group. That's about 20 sysctls per tick on a Mac. *Decided by the maintainer in the M5 session.*
+
+### 25. Interface filtering happens in the collector, and `-net-exclude` replaces the list
+
+`collector.New(Options)` takes the compiled `-net-exclude` regex, and nil means PLAN's default list, anchored as `^(lo|lo0|veth.*|docker.*|br-.*|utun.*|awdl.*|llw.*|bridge.*|anpi.*)$`. A user's regex is used as written and unanchored, like any Go regex, so `^en1$` drops only `en1`. Filtering every interface out gives `"network": []`, not an error. Interfaces keep the OS's order (index order on darwin, `/proc/net/dev` order on Linux). Down and unplugged interfaces that survive the list (`gif0`, `stf0`, `ap1`, Thunderbolt `en1` to `en4` on a Mac) are listed at zero. The maintainer chose to keep PLAN's list as written and revisit once the dashboard shows how noisy that is. Linux reads `/proc/net/dev`, cutting the name at the first colon (Linux forbids `:` in interface names, and kernels before 2.6.37 printed no space after it) and requiring all 16 counters.
+

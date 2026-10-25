@@ -44,8 +44,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	listen := fs.String("listen", "127.0.0.1:9110", "bind `address`; anything but loopback exposes the dashboard, which has no authentication")
 	interval := fs.Duration("interval", 2*time.Second, "sample interval, at least 1s")
 	history := fs.Duration("history", 15*time.Minute, "how much history to hold in memory; at least one -interval")
-	// Empty means the built-in lists, which arrive with the disk and network
-	// collectors (M6, M5). Until then the flags are validated and unused.
+	// Empty means the built-in list. -disk-exclude is validated now and used
+	// once the disk collector lands (M6).
 	diskExclude := fs.String("disk-exclude", "", "`regex` of mount points or fs types to skip; replaces the built-in list")
 	netExclude := fs.String("net-exclude", "", "`regex` of interface names to skip; replaces the built-in list")
 	logLevel := fs.String("log-level", "info", "log `level`: debug, info, warn, or error")
@@ -80,6 +80,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	var opts collector.Options
+	if *netExclude != "" {
+		opts.NetExclude = regexp.MustCompile(*netExclude) // validated above
+	}
+
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -92,7 +97,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	store := sampler.NewStore(sampler.Capacity(*history, *interval))
-	s := sampler.New(collector.New(), store, *interval, log)
+	s := sampler.New(collector.New(opts), store, *interval, log)
 	sctx, stopSampler := context.WithCancel(context.Background())
 	sampled := make(chan struct{})
 	go func() { s.Run(sctx); close(sampled) }()
