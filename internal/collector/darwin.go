@@ -63,7 +63,7 @@ func (d *darwin) Static() HostInfo { return d.info }
 // Temperatures are absent on darwin in v1 (they need private API), so temps
 // is simply empty rather than an error.
 func (d *darwin) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupMemory, GroupDisks, GroupNetwork)}
+	raw := Raw{Errors: pending(GroupDisks, GroupNetwork)}
 	var h C.struct_vitals_host
 	switch C.vitals_host(&h) {
 	case 0:
@@ -85,7 +85,42 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	if raw.CPU, err = d.cpu(); err != nil {
 		raw.Errors[GroupCPU] = err
 	}
+	if raw.Memory, err = memory(); err != nil {
+		raw.Errors[GroupMemory] = err
+	}
 	return raw, nil
+}
+
+// memory returns the memory group, which may come with an error when only the
+// pressure level is unknown (decision 22).
+func memory() (*Memory, error) {
+	var m C.struct_vitals_memory
+	switch C.vitals_memory(&m) {
+	case 0:
+	case -1:
+		return nil, errors.New("reading sysctl hw.memsize failed")
+	case -2:
+		return nil, errors.New("reading sysctl hw.pagesize failed")
+	case -3:
+		return nil, errors.New("host_statistics64(HOST_VM_INFO64) failed")
+	default:
+		return nil, errors.New("reading sysctl vm.swapusage failed")
+	}
+	return memoryFromVM(vmMemory{
+		MemSize:       uint64(m.memsize),
+		PageSize:      uint64(m.pagesize),
+		Active:        uint32(m.active_count),
+		Inactive:      uint32(m.inactive_count),
+		Wire:          uint32(m.wire_count),
+		Purgeable:     uint32(m.purgeable_count),
+		Compressor:    uint32(m.compressor_page_count),
+		Internal:      uint32(m.internal_page_count),
+		External:      uint32(m.external_page_count),
+		SwapTotal:     uint64(m.swap_total),
+		SwapUsed:      uint64(m.swap_used),
+		PressureLevel: int32(m.pressure_level),
+		PressureOK:    m.pressure_ok != 0,
+	})
 }
 
 // cpu returns the CPU group, or nil and an error when there are no ticks. With

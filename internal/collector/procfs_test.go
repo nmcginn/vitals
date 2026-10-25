@@ -19,6 +19,7 @@ func minimal() fstest.MapFS {
 		"proc/uptime":               {Data: []byte("1000.00 3000.00\n")},
 		"proc/loadavg":              {Data: []byte("1.00 0.50 0.25 2/200 999\n")},
 		"proc/stat":                 {Data: []byte("cpu  1 2 3 4 5 6 7 8 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\nintr 0\nbtime 1700000000\nprocesses 1\n")},
+		"proc/meminfo":              {Data: []byte("MemTotal: 1000 kB\nMemAvailable: 600 kB\nSwapTotal: 100 kB\nSwapFree: 75 kB\n")},
 		"proc/sys/kernel/osrelease": {Data: []byte("6.12.48-amd64\n")},
 		"proc/sys/kernel/hostname":  {Data: []byte("box\n")},
 		"etc/os-release":            {Data: []byte("NAME=\"Debian GNU/Linux\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")},
@@ -151,7 +152,7 @@ func TestProcfsHost(t *testing.T) {
 			got[g] = err.Error()
 		}
 		want := map[string]string{}
-		for _, g := range []string{GroupMemory, GroupDisks, GroupNetwork, GroupTemps} {
+		for _, g := range []string{GroupDisks, GroupNetwork, GroupTemps} {
 			want[g] = "not implemented yet"
 		}
 		if !maps.Equal(got, want) {
@@ -252,6 +253,93 @@ func TestProcfsCPU(t *testing.T) {
 			t.Errorf("errors = %v, want host and cpu", raw.Errors)
 		}
 	})
+}
+
+func TestProcfsMemory(t *testing.T) {
+	meminfo := func(s string) fs.FS { return with(map[string]string{"proc/meminfo": s}) }
+
+	t.Run("a machine with swap gives used as total minus available, and swap used as total minus free", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/x86-8core"))
+		if err := raw.Errors[GroupMemory]; err != nil || raw.Memory == nil {
+			t.Fatalf("memory error %v", err)
+		}
+		// MemTotal 32765012, MemAvailable 20154772, SwapTotal 8388604, SwapFree 7340028 (kB).
+		want := Memory{
+			TotalBytes:     32765012 * 1024,
+			AvailableBytes: 20154772 * 1024,
+			UsedBytes:      (32765012 - 20154772) * 1024,
+			SwapTotalBytes: 8388604 * 1024,
+			SwapUsedBytes:  (8388604 - 7340028) * 1024,
+		}
+		if *raw.Memory != want {
+			t.Errorf("memory = %+v\nwant     %+v", *raw.Memory, want)
+		}
+	})
+
+	t.Run("the captured Ubuntu VM has no swap, which is zeros and not an error", func(t *testing.T) {
+		_, raw := collect(t, os.DirFS("testdata/ubuntu-vm"))
+		if err := raw.Errors[GroupMemory]; err != nil || raw.Memory == nil {
+			t.Fatalf("memory error %v", err)
+		}
+		m := raw.Memory
+		if m.TotalBytes != 16477348*1024 || m.UsedBytes != (16477348-15956948)*1024 || m.SwapTotalBytes != 0 || m.SwapUsedBytes != 0 {
+			t.Errorf("memory = %+v", *m)
+		}
+	})
+
+	t.Run("there is no darwin object on Linux", func(t *testing.T) {
+		_, raw := collect(t, minimal())
+		if raw.Memory == nil || raw.Memory.Darwin != nil {
+			t.Errorf("memory = %+v, want one without darwin", raw.Memory)
+		}
+	})
+
+	t.Run("used memory fits in 64 bits past 4 TiB", func(t *testing.T) {
+		// 6 TiB, in kB, is more than 2³² kB.
+		_, raw := collect(t, meminfo("MemTotal: 6442450944 kB\nMemAvailable: 1073741824 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n"))
+		if raw.Memory == nil || raw.Memory.UsedBytes != (6442450944-1073741824)*1024 {
+			t.Errorf("memory = %+v, error %v", raw.Memory, raw.Errors[GroupMemory])
+		}
+	})
+
+	t.Run("an old kernel without MemAvailable fails the memory group, says why, and the others are served", func(t *testing.T) {
+		// Linux 3.10, as on CentOS 7 before the backport.
+		_, raw := collect(t, meminfo("MemTotal:        1015024 kB\nMemFree:          113020 kB\nBuffers:           48404 kB\nCached:           524068 kB\nSwapCached:            0 kB\nSwapTotal:       2097148 kB\nSwapFree:        2097148 kB\n"))
+		err := raw.Errors[GroupMemory]
+		if err == nil || !strings.Contains(err.Error(), "MemAvailable") || !strings.Contains(err.Error(), "3.14") {
+			t.Errorf("memory error = %v, want one naming MemAvailable and Linux 3.14", err)
+		}
+		if raw.Memory != nil {
+			t.Errorf("memory = %+v, want nil rather than a guess", raw.Memory)
+		}
+		if raw.Host == nil || raw.CPU == nil {
+			t.Errorf("host %v, cpu %v: the other groups should be served", raw.Errors[GroupHost], raw.Errors[GroupCPU])
+		}
+	})
+
+	for _, tc := range []struct {
+		name, want string
+		fsys       fs.FS
+	}{
+		{"a missing /proc/meminfo fails the memory group and names the file", "reading /proc/meminfo", with(nil, "proc/meminfo")},
+		{"a missing MemTotal is an error", "no MemTotal", meminfo("MemAvailable: 1 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")},
+		{"missing swap lines are an error, not zero swap", "no SwapTotal", meminfo("MemTotal: 2 kB\nMemAvailable: 1 kB\n")},
+		{"a garbled value is an error naming the line", "MemTotal", meminfo("MemTotal: lots kB\nMemAvailable: 1 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")},
+		{"an empty value is an error", "MemAvailable has no value", meminfo("MemTotal: 2 kB\nMemAvailable:\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")},
+		{"available above total is an error, not a wrapped used", "more than MemTotal", meminfo("MemTotal: 1 kB\nMemAvailable: 2 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")},
+		{"swap free above swap total is an error, not a wrapped swap used", "more than SwapTotal", meminfo("MemTotal: 2 kB\nMemAvailable: 1 kB\nSwapTotal: 0 kB\nSwapFree: 4 kB\n")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, raw := collect(t, tc.fsys)
+			err := raw.Errors[GroupMemory]
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "/proc/meminfo") {
+				t.Errorf("err = %v, want one naming /proc/meminfo and %q", err, tc.want)
+			}
+			if raw.Memory != nil {
+				t.Errorf("memory = %+v, want nil for a failed group", raw.Memory)
+			}
+		})
+	}
 }
 
 func TestProcfsCPUModel(t *testing.T) {

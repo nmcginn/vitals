@@ -37,6 +37,25 @@ struct vitals_host {
 	int64_t fscale;
 };
 
+// The memory group: hw.memsize, hw.pagesize, the host_statistics64
+// (HOST_VM_INFO64) page counts that Activity Monitor's figures are built from,
+// vm.swapusage, and kern.memorystatus_vm_pressure_level.
+struct vitals_memory {
+	uint64_t memsize;
+	uint64_t pagesize;
+	uint32_t active_count;
+	uint32_t inactive_count;
+	uint32_t wire_count;
+	uint32_t purgeable_count;
+	uint32_t compressor_page_count;
+	uint32_t internal_page_count;
+	uint32_t external_page_count;
+	uint64_t swap_total;
+	uint64_t swap_used;
+	int32_t pressure_level;
+	int32_t pressure_ok; // 0 when the pressure sysctl failed
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -50,5 +69,10 @@ int vitals_cpu_load(struct vitals_cpu_load *out, int max);
 // Copies up to max children of IODeviceTree:/cpus into out. Returns the number
 // of children, which may exceed max, or -1 if the registry has no /cpus.
 int vitals_cpu_nodes(struct vitals_cpu_node *out, int max);
+
+// Returns 0 on success, -1 if hw.memsize failed, -2 if hw.pagesize failed, -3
+// if host_statistics64 failed, or -4 if vm.swapusage failed. A failed pressure
+// sysctl is not a failure here: it sets pressure_ok to 0.
+int vitals_memory(struct vitals_memory *out);
 
 #endif

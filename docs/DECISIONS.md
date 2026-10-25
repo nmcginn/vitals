@@ -89,3 +89,11 @@ Each core's kind is the `cluster-type` of the `IODeviceTree:/cpus` child whose `
 ### 21. Linux CPU ticks: iowait is idle, steal is busy, guest is skipped
 
 From `/proc/stat`, busy is user + nice + system + irq + softirq + steal, and idle is idle + iowait. Steal counts as busy because this guest couldn't use the CPU. guest and guest_nice are left out, because the kernel already counts them inside user and nice. Kernels that print only the first four columns still parse. Offline CPUs have no line, so `cores` is the number online, and a CPU coming back changes the count, which nulls per-core usage for that one sample (decision 13). `/proc/stat` is read once per tick for both the host and CPU groups. The model is the first `model name` in `/proc/cpuinfo`, with runs of spaces collapsed. arm64 prints no name, so the first `CPU implementer` and `CPU part` stand in (`implementer 0x41, part 0xd0c`). Otherwise the model is `"unknown"`, as it is on darwin when `machdep.cpu.brand_string` can't be read.
+
+### 22. Darwin memory: Activity Monitor's formula, and an unknown pressure keeps the figures
+
+Used is (internal − purgeable + wired + compressor) pages × `hw.pagesize`, per PLAN's assumption, and available is `hw.memsize` − used. Page counts are widened to 64 bits before multiplying. Counts that can't be right (purgeable above internal, or used above `hw.memsize`) fail the group rather than being clamped. File-backed is `external_page_count`. `kern.memorystatus_vm_pressure_level` 1, 2, and 4 are `normal`, `warn`, and `critical`. Any other value, or a failed sysctl, sets `pressure` to `null` with the reason in `errors.memory`, and the other memory figures are still served, as with the P/E split in decision 20, because they don't depend on it. `pressure` is therefore a nullable string.
+
+### 23. Linux memory needs `MemAvailable`
+
+Used is `MemTotal` − `MemAvailable`, and swap used is `SwapTotal` − `SwapFree`, all from `/proc/meminfo` in KiB × 1024. A kernel without `MemAvailable` (before 3.14) fails the memory group with a message saying so, while the other groups are served. Estimating it from free + buffers + cache would be a guess the kernel itself warns against. A missing swap line is an error too, not zero swap. Available above total, or swap free above swap total, is an error rather than a wrapped `uint64`.

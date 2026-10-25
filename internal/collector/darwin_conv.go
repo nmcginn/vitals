@@ -66,6 +66,66 @@ func cpuFromLoad(loads []cpuLoad) CPU {
 	return c
 }
 
+// vmMemory mirrors the shim's struct vitals_memory: page counts from
+// host_statistics64(HOST_VM_INFO64), plus the sysctls around them.
+type vmMemory struct {
+	MemSize, PageSize                 uint64
+	Active, Inactive, Wire, Purgeable uint32
+	Compressor, Internal, External    uint32
+	SwapTotal, SwapUsed               uint64
+	PressureLevel                     int32
+	PressureOK                        bool
+}
+
+// The levels kern.memorystatus_vm_pressure_level reports, from the kernel's
+// kVMPressureNormal, kVMPressureWarning, and kVMPressureCritical.
+var pressureLevels = map[int32]string{1: "normal", 2: "warn", 4: "critical"}
+
+// memoryFromVM computes the memory group the way Activity Monitor does (PLAN's
+// assumption): used is app memory (internal − purgeable) + wired + compressed,
+// and available is the rest. Page counts are widened before multiplying, since
+// 2²⁰ pages of 16 KiB is past 2³². Counts that don't add up are an error rather
+// than a clamped guess. An unknown pressure level keeps the figures, which are
+// right without it, and returns the error alongside them (decision 22).
+func memoryFromVM(v vmMemory) (*Memory, error) {
+	switch {
+	case v.MemSize == 0:
+		return nil, errors.New("sysctl hw.memsize: total memory is 0")
+	case v.PageSize == 0:
+		return nil, errors.New("sysctl hw.pagesize: page size is 0")
+	case v.Purgeable > v.Internal:
+		return nil, fmt.Errorf("host_statistics64: %d purgeable pages, but only %d internal", v.Purgeable, v.Internal)
+	}
+	pages := func(n uint32) uint64 { return uint64(n) * v.PageSize }
+	used := pages(v.Internal-v.Purgeable) + pages(v.Wire) + pages(v.Compressor)
+	if used > v.MemSize {
+		return nil, fmt.Errorf("host_statistics64: %d bytes used, more than hw.memsize's %d", used, v.MemSize)
+	}
+	m := &Memory{
+		TotalBytes:     v.MemSize,
+		UsedBytes:      used,
+		AvailableBytes: v.MemSize - used,
+		SwapTotalBytes: v.SwapTotal,
+		SwapUsedBytes:  v.SwapUsed,
+		Darwin: &MemoryDarwin{
+			WiredBytes:      pages(v.Wire),
+			CompressedBytes: pages(v.Compressor),
+			ActiveBytes:     pages(v.Active),
+			InactiveBytes:   pages(v.Inactive),
+			FileBackedBytes: pages(v.External),
+		},
+	}
+	if !v.PressureOK {
+		return m, errors.New("sysctl kern.memorystatus_vm_pressure_level failed, so pressure is unknown")
+	}
+	level, ok := pressureLevels[v.PressureLevel]
+	if !ok {
+		return m, fmt.Errorf("kern.memorystatus_vm_pressure_level is %d; only 1, 2, and 4 (normal, warn, critical) are known", v.PressureLevel)
+	}
+	m.Darwin.Pressure = &level
+	return m, nil
+}
+
 // cpuNode mirrors one child of IODeviceTree:/cpus: its "logical-cpu-id"
 // (-1 when missing) and the first byte of its "cluster-type" (0 when missing).
 type cpuNode struct {

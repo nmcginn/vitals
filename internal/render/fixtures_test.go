@@ -38,7 +38,7 @@ func darwinFull() *sampler.Snapshot {
 			SwapTotalBytes: 0, SwapUsedBytes: 0,
 			Darwin: &collector.MemoryDarwin{
 				WiredBytes: 2147483648, CompressedBytes: 536870912, ActiveBytes: 4294967296,
-				InactiveBytes: 3221225472, FileBackedBytes: 2684354560, Pressure: "normal",
+				InactiveBytes: 3221225472, FileBackedBytes: 2684354560, Pressure: p("normal"),
 			},
 		},
 		Disks: []sampler.Disk{{
