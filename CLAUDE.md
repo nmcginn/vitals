@@ -14,7 +14,7 @@ In this order, when they conflict:
 2. **One binary, nothing installed.** Standard library only: no third-party Go modules, not even `golang.org/x/sys`. On darwin the binary links only `libSystem`, IOKit, and CoreFoundation (`otool -L` shows only `/usr/lib` and `/System/Library`). Linux builds are `CGO_ENABLED=0` and fully static. No config files, no assets on disk, and no network requests from the dashboard.
 3. **Light.** At the default 2s interval: under 20 MB RSS and under 1% of one core at idle, and RSS stops growing once the ring buffer is full. Serving a request never triggers collection. The dashboard is under 50 KB. Avoid per-tick allocations that grow with history, and avoid anything that spawns a process.
 4. **Read-only and safe by default.** No endpoint changes anything. Listen on `127.0.0.1:9110` by default, and warn once at startup when bound elsewhere. Never require root. Never output environment variables, command lines, usernames, or process lists. Security headers and server timeouts are exactly as `docs/PLAN.md` lists them.
-5. **Small and readable.** The spec's 1,000 to 1,200 lines of Go plus one small C shim was an initial estimate, not a budget (decision 29): clean code beats a lower count, so never make code denser to save lines, and never pad it either. Choose the plain version over the clever one, and don't build abstractions for the non-goals (multi-host, auth, persistence, tsnet). The dashboard works fully with JavaScript disabled, and text output fits 80 columns.
+5. **Small and readable.** The spec's 1,000 to 1,200 lines of Go plus one small C shim was an initial estimate, not a budget (decision 29): clean code beats a lower count, so never make code denser to save lines, and never pad it either. Choose the plain version over the clever one, and don't build abstractions for the non-goals (multi-host, auth, persistence, tsnet). The dashboard works fully with JavaScript disabled (any script only adds conveniences), and text output fits 80 columns.
 
 ## Architecture
 
@@ -67,7 +67,7 @@ Until milestone M0 lands, these commands do not exist yet. Creating them is M0's
 - No third-party Go modules, including gopsutil, the Prometheus client, and `golang.org/x/*`. The spec rules them out, and the single-binary goal depends on it.
 - No private macOS API (IOReport, SMC) in v1. It belongs to the v1.1 stretch and must be loaded with `dlopen` when it comes. Linking it would break the binary on the next macOS update.
 - Nothing from the non-goals: no process lists, write endpoints, persistence, auth, alerting, or multi-host support. Don't add hooks or interfaces "for later" either. The handler/listener split is the only accommodation for tsnet.
-- No JavaScript on the dashboard, and no external requests of any kind (fonts, CDNs, images). The CSP forbids them anyway.
+- Minimal JavaScript on the dashboard, with graceful fallback (decision 34): one small inline script, allowed by its hash in the CSP, that only adds conveniences and never fetches anything. Every number and link works with scripts off. No external requests of any kind (fonts, CDNs, images, scripts). The CSP forbids them anyway.
 - Never require or test as root, and never shell out (`vm_stat`, `sysctl`, `df`) to collect a metric. That costs CPU and breaks priority 3.
 - Never change a number from the spec (a budget, default, timeout, header, or flag) to make something pass. Those changes are the maintainer's, through an open question.
 

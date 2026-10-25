@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -79,7 +81,7 @@ func get(t *testing.T, h http.Handler, target string) response {
 	return do(t, h, http.MethodGet, target, nil)
 }
 
-var routes = []string{"/healthz", "/api/v1/stats", "/api/v1/history"}
+var routes = []string{"/", "/healthz", "/api/v1/stats", "/api/v1/history"}
 
 func TestHealthz(t *testing.T) {
 	t.Run("503 no sample yet before the first sample", func(t *testing.T) {
@@ -140,6 +142,71 @@ func TestStats(t *testing.T) {
 			t.Errorf("?pretty=yes indented:\n%s", r.body)
 		}
 	})
+}
+
+func TestDashboard(t *testing.T) {
+	t.Run("503 before the first sample", func(t *testing.T) {
+		r := get(t, New(sampler.NewStore(10), Options{}), "/")
+		if r.status != 503 || r.body != "no sample yet\n" {
+			t.Errorf("got %d %q", r.status, r.body)
+		}
+	})
+
+	store, _ := sampled(t)
+	h := New(store, Options{})
+
+	t.Run("/ is the HTML dashboard with PLAN's Content-Security-Policy, allowing only its own script", func(t *testing.T) {
+		r := get(t, h, "/")
+		if r.status != 200 || r.header.Get("Content-Type") != "text/html; charset=utf-8" {
+			t.Fatalf("got %d %q", r.status, r.header.Get("Content-Type"))
+		}
+		// The script source is computed here from the page itself, so this
+		// fails if what's served and what the header allows ever drift apart.
+		start, end := strings.Index(r.body, "<script>"), strings.Index(r.body, "</script>")
+		if start < 0 || end < start {
+			t.Fatal("the page has no script")
+		}
+		sum := sha256.Sum256([]byte(r.body[start+len("<script>") : end]))
+		want := "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+		if got := r.header.Get("Content-Security-Policy"); got != want {
+			t.Errorf("Content-Security-Policy = %q\nwant %q", got, want)
+		}
+		if !strings.HasPrefix(r.body, "<!doctype html>") || !strings.Contains(r.body, "<h1><a href=\"/\">mini</a></h1>") {
+			t.Errorf("not the dashboard:\n%s", r.body)
+		}
+	})
+
+	t.Run("other paths under / are 404, not the dashboard", func(t *testing.T) {
+		if r := get(t, h, "/index.html"); r.status != 404 {
+			t.Errorf("got %d", r.status)
+		}
+	})
+
+	// The sampler here runs at a one-hour interval, so the default refresh
+	// is 3600.
+	for _, tc := range []struct{ query, want string }{
+		{"", `content="3600"`},
+		{"?refresh=10", `content="10"`},
+		{"?refresh=1", `content="2"`},
+		{"?refresh=0", ""},
+		{"?refresh=-5", `content="3600"`},
+		{"?refresh=2.5", `content="3600"`},
+		{"?refresh=soon", `content="3600"`},
+		{"?refresh=", `content="3600"`},
+		{"?refresh=99999999999999999999", `content="3600"`},
+	} {
+		name := "the meta refresh for " + tc.query + " is " + tc.want
+		if tc.want == "" {
+			name = "there is no meta refresh for " + tc.query
+		}
+		t.Run(name, func(t *testing.T) {
+			r := get(t, h, "/"+tc.query)
+			has := strings.Contains(r.body, `http-equiv="refresh"`)
+			if tc.want == "" && has || tc.want != "" && !strings.Contains(r.body, `<meta http-equiv="refresh" `+tc.want+`>`) {
+				t.Errorf("refresh tag wrong in:\n%s", r.body[:min(len(r.body), 300)])
+			}
+		})
+	}
 }
 
 func TestHistory(t *testing.T) {
@@ -257,6 +324,7 @@ func TestMethodsAndHeaders(t *testing.T) {
 		"HEAD":        do(t, h, http.MethodHead, "/api/v1/history", nil),
 		"trailing /":  get(t, h, "/healthz/"),
 		"history 200": get(t, h, "/api/v1/history"),
+		"dashboard":   get(t, h, "/"),
 	}
 	for name, r := range cases {
 		t.Run(name+" responses carry no-store, nosniff, no-referrer, and a utf-8 Content-Type", func(t *testing.T) {

@@ -1,0 +1,171 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f4f5f7;
+  --card: #fff;
+  --text: #1c1e21;
+  --muted: #5f6670;
+  --line: #dfe2e6;
+  --track: #e6e8eb;
+  --accent: #2463c7;
+  --accent2: #b4570a;
+  --warn: #a86400;
+  --crit: #c4281c;
+  --ok: #217a3c;
+  --error-bg: #fdecea;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+/* Dark when the system asks for it, unless the toggle chose light; or when
+   the toggle chose dark. The toggle sets data-theme (decision 34). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111315;
+    --card: #1b1e21;
+    --text: #e6e8eb;
+    --muted: #9aa1aa;
+    --line: #2d3136;
+    --track: #2d3136;
+    --accent: #6ea8ff;
+    --accent2: #f0a35e;
+    --warn: #e0a030;
+    --crit: #ff6b5e;
+    --ok: #5cc87a;
+    --error-bg: #3a1c1a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111315;
+  --card: #1b1e21;
+  --text: #e6e8eb;
+  --muted: #9aa1aa;
+  --line: #2d3136;
+  --track: #2d3136;
+  --accent: #6ea8ff;
+  --accent2: #f0a35e;
+  --warn: #e0a030;
+  --crit: #ff6b5e;
+  --ok: #5cc87a;
+  --error-bg: #3a1c1a;
+}
+:root[data-theme="light"] { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 var(--sans);
+}
+header, main, footer { max-width: 75rem; margin: 0 auto; }
+h1 { margin: 0; font-size: 1.5rem; overflow-wrap: anywhere; }
+h1 a { color: inherit; text-decoration: none; }
+header p, footer p { margin: .25rem 0; color: var(--muted); }
+a { color: var(--accent); }
+main { display: grid; gap: 1rem; margin-top: 1rem; }
+@media (min-width: 900px) {
+  main { grid-template-columns: 1fr 1fr; }
+}
+section {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: .5rem;
+}
+h2 { margin: 0 0 .75rem; font-size: 1rem; }
+/* Monospace faces run large beside system-ui; this keeps a figure the size of
+   the words around it. */
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: .9em; }
+.big { font-size: 1.75rem; }
+.of, small, .none, .label { color: var(--muted); }
+small { display: block; font-size: .8rem; }
+.error {
+  margin: 0 0 .75rem;
+  padding: .5rem .75rem;
+  background: var(--error-bg);
+  border-left: 3px solid var(--crit);
+  overflow-wrap: anywhere;
+}
+.now { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; }
+.now svg { flex: 1 1 10rem; height: 2.5rem; }
+svg { display: block; width: 100%; height: 2rem; overflow: visible; }
+path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+path.tx { stroke: var(--accent2); stroke-dasharray: 4 3; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: .2rem 1rem; margin: .75rem 0 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.cores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: .25rem 1rem;
+  margin: .75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cores li { display: flex; align-items: center; gap: .4rem; }
+.cores .label { width: 2.2rem; font-family: var(--mono); font-size: .8rem; }
+.cores .bar { flex: 1; }
+.bar {
+  display: inline-block;
+  width: 5rem;
+  height: .5rem;
+  vertical-align: middle;
+  background: var(--track);
+  border-radius: .25rem;
+  overflow: hidden;
+}
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar.warn i { background: var(--warn); }
+.bar.crit i { background: var(--crit); }
+.pressure.normal { color: var(--ok); }
+.pressure.warn { color: var(--warn); font-weight: 600; }
+.pressure.critical { color: var(--crit); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .4rem 0 .4rem .75rem; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+tr > :first-child { padding-left: 0; }
+thead th { border-top: 0; color: var(--muted); font-size: .8rem; font-weight: 500; }
+tbody th { font-weight: 500; overflow-wrap: anywhere; }
+tr.spark td { padding-top: 0; border-top: 0; }
+td.used { width: 40%; }
+td.used .bar { display: block; width: auto; margin: .2rem 0; }
+tbody th small { overflow-wrap: normal; word-break: normal; }
+.r { text-align: right; }
+td.r { white-space: nowrap; }
+#theme {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* An inline-block keeps the button's underline off the separator. */
+#theme::before { content: "·\a0"; display: inline-block; color: var(--muted); }
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary h2::before {
+  content: "▾";
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+details:not([open]) summary h2 { margin-bottom: 0; }
+details:not([open]) summary h2::before { content: "▸"; }
+/* A closed card is just its heading, not a box as tall as its neighbour. */
+section:has(details:not([open])) { align-self: start; }
+/* Cards the reader closed, hidden from first paint until the script closes
+   the cards themselves (decision 34). One line per card. */
+:root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
+:root[data-closed~="memory"] [data-card="memory"] > :not(summary),
+:root[data-closed~="disks"] [data-card="disks"] > :not(summary),
+:root[data-closed~="network"] [data-card="network"] > :not(summary),
+:root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }

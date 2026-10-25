@@ -112,7 +112,7 @@ An unknown `format` value, or an `Accept` header that matches nothing and has no
 - **Assumption:** `text/plain` without `version=0.0.4` means the text renderer. `q=0` excludes a type.
 - **Assumption:** a malformed `?since=` returns `400` naming the parameter. The `503` body from `/healthz` before the first sample is `no sample yet`.
 
-All responses set `Cache-Control: no-store`, a correct `Content-Type` with `charset=utf-8`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. HTML responses also set `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`. JSON is not indented unless `?pretty=1`. Plain text is aligned columns readable in a terminal at **80 columns**. Request bodies are ignored.
+All responses set `Cache-Control: no-store`, a correct `Content-Type` with `charset=utf-8`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. HTML responses also set `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-…'`, the hash being the SHA-256 of the dashboard's one inline script (decision 34). JSON is not indented unless `?pretty=1`. Plain text is aligned columns readable in a terminal at **80 columns**. Request bodies are ignored.
 
 ### JSON snapshot shape
 
@@ -157,13 +157,14 @@ A rate that is unknown on this sample is omitted, because Prometheus has no null
 
 ### Dashboard
 
-One server-rendered HTML page, built with `html/template`, **under 50 KB**, with no JavaScript and no external requests.
+One server-rendered HTML page, built with `html/template`, **under 50 KB**, with no external requests. JavaScript is minimal and optional (decision 34): one inline script adds the light/dark/auto theme toggle, and everything else works with scripts off.
 
 - **Layout, top to bottom:** a header line (hostname, OS/kernel, uptime, sampled-at time), then cards for CPU, memory, disks, network, and temperatures (omitted when there are none). Single column on narrow screens, and a two-column grid from about **900px**.
 - **Sparklines:** inline SVG generated server-side from the ring buffer. A CPU total line, a memory used line, and a combined rx/tx line per network interface. Fixed `viewBox`, no axes, and the current value as text beside the line.
 - **Disk usage:** a horizontal bar per mount, using a styled `<meter>` or a CSS width. Colour reinforces but is never the only signal: the percentage is shown as text too.
 - **Refresh:** `<meta http-equiv="refresh">` set to the sample interval, with a **minimum of 2s**. `?refresh=0` disables it, and `?refresh=N` overrides it. Links on the page carry the `refresh` value through. **Assumption:** a non-integer or negative `refresh` is ignored, and a value of 1 is raised to 2.
-- **Styling:** one embedded stylesheet (via `embed`) inlined into a `<style>` tag, so each page load is one response. Light and dark modes through `prefers-color-scheme`, using CSS custom properties. The system UI font stack for text, and a monospace stack with `font-variant-numeric: tabular-nums` for figures, so numbers don't jitter between refreshes.
+- **Styling:** one embedded stylesheet (via `embed`) inlined into a `<style>` tag, so each page load is one response. Light and dark modes through `prefers-color-scheme`, using CSS custom properties, which a footer toggle (Auto, Light, Dark) overrides and remembers in the browser (decision 34). The system UI font stack for text, and a monospace stack with `font-variant-numeric: tabular-nums` for figures, so numbers don't jitter between refreshes.
+- **Collapsible cards:** each card is a `<details open>` with its heading as the `<summary>`. The script remembers which cards were closed across refreshes (decision 34).
 - **Accessibility:** a semantic heading per card, real `<table>` elements for disks and network, and a `<title>` element in every SVG.
 
 ### Configuration
@@ -233,7 +234,7 @@ This follows the spec's layout. It adds three untagged files (`darwin_conv.go`, 
 - **Linux parsers:** read through an `fs.FS` root, so they run against fixtures in `testdata/` on any OS, including the Mac.
 - **Sampler:** a fake `Collector` with scripted counters tests the rate math with a fake clock: counter wraparound or reset (a missing rate, never negative), first-sample `null`s, overrun ticks being skipped, and ring-buffer eviction.
 - **Negotiation:** table-driven tests over query, `Accept`, and q-value combinations, including the `406` and `405` cases.
-- **Renderers:** golden-file tests for JSON, HTML, text, and Prometheus output from a fixed snapshot, with `-update` to regenerate. HTML has a size test (under 50 KB with a full 450-sample history) and a test that it contains no `<script` and no `http://` or `https://` reference. Text has a test that no line exceeds 80 columns. Prometheus has an in-repo grammar test for exposition format 0.0.4 (decision 8).
+- **Renderers:** golden-file tests for JSON, HTML, text, and Prometheus output from a fixed snapshot, with `-update` to regenerate. HTML has a size test (under 50 KB with a full 450-sample history) and a test that its only script is the theme script whose hash is in the CSP, and that it has no `http://` or `https://` reference. Text has a test that no line exceeds 80 columns. Prometheus has an in-repo grammar test for exposition format 0.0.4 (decision 8).
 - **Budgets:** allocation tests on the per-tick and per-request paths, and a test that a full ring buffer doesn't grow. The one-hour idle RSS and CPU check is the maintainer's, on the Mini.
 - **Quality gates:** `go vet`, `staticcheck`, and `go test -race ./...`, all clean on Linux in every session and on macOS in CI.
 

@@ -18,9 +18,15 @@ type Options struct {
 }
 
 const (
+	typeHTML = "text/html; charset=utf-8"
 	typeJSON = "application/json; charset=utf-8"
 	typeText = "text/plain; charset=utf-8"
 )
+
+// csp is PLAN's policy for HTML: inline styles, data: images, and the one
+// inline script whose hash render publishes (decision 34). Nothing else runs,
+// and nothing reaches the network.
+var csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src " + render.ScriptHash
 
 // New returns the handler for every route. Method patterns make ServeMux
 // answer anything but GET and HEAD with 405 and "Allow: GET, HEAD".
@@ -30,6 +36,7 @@ func New(store *sampler.Store, opts Options) http.Handler {
 		s.log = slog.New(slog.DiscardHandler)
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", s.dashboard)
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /api/v1/stats", s.stats)
 	mux.HandleFunc("GET /api/v1/history", s.history)
@@ -54,6 +61,24 @@ func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusOK, typeText, []byte("ok\n"))
+}
+
+func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
+	snap := s.store.Latest()
+	if snap == nil {
+		write(w, http.StatusServiceUnavailable, typeText, []byte("no sample yet\n"))
+		return
+	}
+	b, err := render.HTML(snap, s.store.History(), page(r))
+	w.Header().Set("Content-Security-Policy", csp)
+	s.respond(w, typeHTML, b, err)
+}
+
+// page reads ?refresh=. Anything but a whole number of seconds, 0 or more, is
+// ignored, and the page refreshes at the sample interval (PLAN).
+func page(r *http.Request) render.Page {
+	n, err := strconv.Atoi(r.URL.Query().Get("refresh"))
+	return render.Page{Refresh: n, RefreshSet: err == nil && n >= 0}
 }
 
 func (s *server) stats(w http.ResponseWriter, r *http.Request) {

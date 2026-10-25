@@ -103,3 +103,58 @@ func linuxPartial() *sampler.Snapshot {
 		Errors: map[string]string{"network": "reading /proc/net/dev: permission denied"},
 	}
 }
+
+// darwinErrors is a darwin sample where CPU and memory failed, one mount
+// couldn't be read, and the rest is fine.
+func darwinErrors() *sampler.Snapshot {
+	s := darwinFull()
+	s.CPU, s.Memory = nil, nil
+	s.Errors = map[string]string{
+		"cpu":    "host_processor_info: (os/kern) failure",
+		"memory": "host_statistics64: (os/kern) failure",
+		"disks":  `statfs "/Volumes/Backup": input/output error`,
+	}
+	return s
+}
+
+// historyOf is n samples ending in s, two seconds apart, with CPU, memory,
+// and every interface's rates varying so sparklines have something to draw.
+// The oldest sample has no rates, like the first one after startup, and
+// sample 3 is missing its network group.
+func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
+	h := make([]*sampler.Snapshot, n)
+	for i := range h {
+		snap := *s
+		snap.SampledAt = s.SampledAt.Add(time.Duration(i-n+1) * 2 * time.Second)
+		if s.CPU != nil {
+			c := *s.CPU
+			c.UsagePct = p(float64(i * 37 % 100))
+			snap.CPU = &c
+		}
+		if s.Memory != nil {
+			m := *s.Memory
+			m.UsedBytes = m.TotalBytes / 100 * uint64(40+i*7%30)
+			snap.Memory = &m
+		}
+		snap.Network = make([]sampler.Interface, len(s.Network))
+		for j, nic := range s.Network {
+			nic.RxBps = p(float64((i*53+j*11)%97) * 1024)
+			nic.TxBps = p(float64((i*29+j*7)%41) * 512)
+			snap.Network[j] = nic
+		}
+		if i == 0 {
+			if snap.CPU != nil {
+				snap.CPU.UsagePct = nil
+			}
+			for j := range snap.Network {
+				snap.Network[j].RxBps, snap.Network[j].TxBps = nil, nil
+			}
+		}
+		if i == 3 {
+			snap.Network = nil
+		}
+		h[i] = &snap
+	}
+	h[n-1] = s
+	return h
+}
