@@ -403,7 +403,6 @@ func TestProcfsDisks(t *testing.T) {
 			{Mount: "/var/lib/data", Device: "/dev/mapper/vg0-data", FS: "xfs", TotalBytes: 1000, FreeBytes: 250,
 				IO: &DiskIO{Device: "dm-0", ReadBytes: 22334455 * 512, WriteBytes: 33445566 * 512}},
 			{Mount: "/mnt/usb\tstick", Device: "/dev/sdb1", FS: "vfat", TotalBytes: 1000, FreeBytes: 250},
-			{Mount: "/mnt/backup", Device: "//nas/backup", FS: "cifs", TotalBytes: 1000, FreeBytes: 250},
 		}
 		if !slices.EqualFunc(raw.Disks, want, func(a, b Disk) bool {
 			return a.Mount == b.Mount && a.Device == b.Device && a.FS == b.FS && a.TotalBytes == b.TotalBytes &&
@@ -436,8 +435,23 @@ func TestProcfsDisks(t *testing.T) {
 		}
 	})
 
+	t.Run("the default list never asks statfs about a network share, so a dead server can't hang the sampler", func(t *testing.T) {
+		statfs := func(mount string) (uint64, uint64, error) {
+			if mount == "/mnt/backup" {
+				t.Errorf("statfs called on the cifs share %s", mount)
+			}
+			return 1000, 250, nil
+		}
+		_, raw := collectWith(t, x86, statfs, Options{})
+		if m := mounts(raw.Disks); slices.Contains(m, "/mnt/backup") {
+			t.Errorf("mounts = %v, want no /mnt/backup", m)
+		}
+	})
+
+	// The nfs4 mount is kept by a -disk-exclude that names only tmpfs, as
+	// someone who wants their shares back would write it.
 	t.Run("a device that can't be mapped to a disk has no counters, so its rates are null rather than 0", func(t *testing.T) {
-		_, raw := collect(t, with(map[string]string{"proc/self/mounts": "/dev/root / ext4 rw 0 0\n/dev/sdz1 /z ext4 rw 0 0\n/dev/mapper/gone /g xfs rw 0 0\nserver:/export /nfs nfs4 rw 0 0\n"}))
+		_, raw := collectWith(t, with(map[string]string{"proc/self/mounts": "/dev/root / ext4 rw 0 0\n/dev/sdz1 /z ext4 rw 0 0\n/dev/mapper/gone /g xfs rw 0 0\nserver:/export /nfs nfs4 rw 0 0\n"}), fakeStatfs(nil), Options{DiskExclude: regexp.MustCompile(`^tmpfs$`)})
 		if len(raw.Disks) != 4 {
 			t.Fatalf("disks = %+v, want 4", raw.Disks)
 		}
@@ -464,13 +478,13 @@ func TestProcfsDisks(t *testing.T) {
 	})
 
 	t.Run("a mount statfs can't read is left out and named in the error, and the other mounts are served", func(t *testing.T) {
-		_, raw := collectWith(t, x86, fakeStatfs(nil, "/mnt/backup", "/boot/efi"), Options{})
+		_, raw := collectWith(t, x86, fakeStatfs(nil, "/var/lib/data", "/boot/efi"), Options{})
 		err := raw.Errors[GroupDisks]
-		if err == nil || !strings.Contains(err.Error(), "statfs /mnt/backup") || !strings.Contains(err.Error(), "statfs /boot/efi") {
+		if err == nil || !strings.Contains(err.Error(), "statfs /var/lib/data") || !strings.Contains(err.Error(), "statfs /boot/efi") {
 			t.Errorf("error = %v, want one naming both mounts", err)
 		}
-		if m := mounts(raw.Disks); len(m) != 4 || slices.Contains(m, "/mnt/backup") {
-			t.Errorf("mounts = %v, want the other four", m)
+		if m := mounts(raw.Disks); len(m) != 3 || slices.Contains(m, "/var/lib/data") {
+			t.Errorf("mounts = %v, want the other three", m)
 		}
 	})
 

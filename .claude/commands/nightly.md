@@ -53,7 +53,7 @@ Passing tests is not the same as working. Before writing the PR, do the ones tha
 - **Text output:** `curl -s localhost:PORT/?format=text | awk '{ if (length($0) > 80) print "TOO WIDE: " $0 }'` prints nothing.
 - **Prometheus output:** the grammar test passes, and the sample names in the output match PLAN's naming exactly, including the four the spec fixes.
 - **Darwin changes:** this session can't compile them. After pushing, read the PR's check runs and wait for the `macos` job (it takes a few minutes). If it fails, read the log, fix it, and push again before you finish. If you can't read check results from this session, say so plainly in the PR, under what deserves the closest look.
-- **Line budget:** report `find . -name '*.go' ! -name '*_test.go' | xargs wc -l | tail -1` and the shim's line count in the PR, against the spec's 1,000 to 1,200.
+- **Line budget:** report `find . -name '*.go' ! -name '*_test.go' | xargs wc -l | tail -1` and the shim's line count in the PR, with the change since the last PR. The spec's 1,000 to 1,200 is an estimate, not a budget (decision 29).
 
 ## 4. Audit before writing the PR
 
