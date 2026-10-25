@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="2">
+<title>mini · vitals</title>
+<style>:root {
+  color-scheme: light dark;
+  --bg: #f4f5f7;
+  --card: #fff;
+  --text: #1c1e21;
+  --muted: #5f6670;
+  --line: #dfe2e6;
+  --track: #e6e8eb;
+  --accent: #2463c7;
+  --accent2: #b4570a;
+  --warn: #a86400;
+  --crit: #c4281c;
+  --ok: #217a3c;
+  --error-bg: #fdecea;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111315;
+    --card: #1b1e21;
+    --text: #e6e8eb;
+    --muted: #9aa1aa;
+    --line: #2d3136;
+    --track: #2d3136;
+    --accent: #6ea8ff;
+    --accent2: #f0a35e;
+    --warn: #e0a030;
+    --crit: #ff6b5e;
+    --ok: #5cc87a;
+    --error-bg: #3a1c1a;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 var(--sans);
+}
+header, main, footer { max-width: 75rem; margin: 0 auto; }
+h1 { margin: 0; font-size: 1.5rem; overflow-wrap: anywhere; }
+h1 a { color: inherit; text-decoration: none; }
+header p, footer p { margin: .25rem 0; color: var(--muted); }
+a { color: var(--accent); }
+main { display: grid; gap: 1rem; margin-top: 1rem; }
+@media (min-width: 900px) {
+  main { grid-template-columns: 1fr 1fr; }
+}
+section {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: .5rem;
+}
+h2 { margin: 0 0 .75rem; font-size: 1rem; }
+/* Monospace faces run large beside system-ui; this keeps a figure the size of
+   the words around it. */
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: .9em; }
+.big { font-size: 1.75rem; }
+.of, small, .none, .label { color: var(--muted); }
+small { display: block; font-size: .8rem; }
+.error {
+  margin: 0 0 .75rem;
+  padding: .5rem .75rem;
+  background: var(--error-bg);
+  border-left: 3px solid var(--crit);
+  overflow-wrap: anywhere;
+}
+.now { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; }
+.now svg { flex: 1 1 10rem; height: 2.5rem; }
+svg { display: block; width: 100%; height: 2rem; overflow: visible; }
+path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+path.tx { stroke: var(--accent2); stroke-dasharray: 4 3; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: .2rem 1rem; margin: .75rem 0 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.cores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: .25rem 1rem;
+  margin: .75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cores li { display: flex; align-items: center; gap: .4rem; }
+.cores .label { width: 2.2rem; font-family: var(--mono); font-size: .8rem; }
+.cores .bar { flex: 1; }
+.bar {
+  display: inline-block;
+  width: 5rem;
+  height: .5rem;
+  vertical-align: middle;
+  background: var(--track);
+  border-radius: .25rem;
+  overflow: hidden;
+}
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar.warn i { background: var(--warn); }
+.bar.crit i { background: var(--crit); }
+.pressure.normal { color: var(--ok); }
+.pressure.warn { color: var(--warn); font-weight: 600; }
+.pressure.critical { color: var(--crit); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .4rem 0 .4rem .75rem; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+tr > :first-child { padding-left: 0; }
+thead th { border-top: 0; color: var(--muted); font-size: .8rem; font-weight: 500; }
+tbody th { font-weight: 500; overflow-wrap: anywhere; }
+tr.spark td { padding-top: 0; border-top: 0; }
+td.used { width: 40%; }
+td.used .bar { display: block; width: auto; margin: .2rem 0; }
+tbody th small { overflow-wrap: normal; word-break: normal; }
+.r { text-align: right; }
+td.r { white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+<h1><a href="/">mini</a></h1>
+<p>macOS 26.1 · Darwin 25.1.0 · arm64 · up <span class="num">10d 0h</span> · sampled <time datetime="2026-10-21T14:02:06Z" class="num">2026-10-21 14:02:06 UTC</time></p>
+</header>
+<main>
+<section aria-labelledby="cpu">
+<h2 id="cpu">CPU</h2>
+<p class="error">CPU unavailable: host_processor_info: (os/kern) failure</p>
+</section>
+<section aria-labelledby="memory">
+<h2 id="memory">Memory</h2>
+<p class="error">Memory unavailable: host_statistics64: (os/kern) failure</p>
+</section>
+<section aria-labelledby="disks">
+<h2 id="disks">Disks</h2>
+<p class="error">Disks: statfs &#34;/Volumes/Backup&#34;: input/output error</p>
+<table>
+<thead><tr><th scope="col">Mount</th><th scope="col">Used</th><th scope="col" class="r">Read<br>Write</th></tr></thead>
+<tbody>
+<tr><th scope="row">/<small>/dev/disk3s1 · apfs</small></th><td class="used"><span class="num">24.3%</span><span class="bar"><i style="width:24.3%"></i></span><small class="num">112.0 GiB of 460.4 GiB</small></td><td class="r num">0 B/s<br>40.0 KiB/s</td></tr>
+</tbody>
+</table>
+</section>
+<section aria-labelledby="network">
+<h2 id="network">Network</h2>
+<table>
+<thead><tr><th scope="col">Interface</th><th scope="col" class="r">Receive</th><th scope="col" class="r">Send</th></tr></thead>
+<tbody>
+<tr><th scope="row">en0</th><td class="r num">12.5 KiB/s<small>21 pkt/s</small><small>93.7 MiB total</small></td><td class="r num">3.3 KiB/s<small>14 pkt/s</small><small>11.4 MiB total</small></td></tr>
+<tr class="spark"><td colspan="3"><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>en0 receive (solid) and send (dashed) over the last 58 s, peak 90.0 KiB/s</title><path d="M4.1 13.3L8.3 28M16.6 25L20.7 7.3L24.8 22L29 4.3L33.1 19L37.2 1.3L41.4 16L45.5 30.7L49.7 13L53.8 27.7L57.9 10L62.1 24.7L66.2 7L70.3 21.7L74.5 4L78.6 18.7L82.8 1L86.9 15.7L91 30.3L95.2 12.7L99.3 27.3L103.4 9.7L107.6 24.3L111.7 6.7L115.9 21.3L120 26.8"/><path class="tx" d="M4.1 26.2L8.3 28.2M16.6 25.3L20.7 27.3L24.8 29.3L29 24.5L33.1 26.5L37.2 28.5L41.4 30.5L45.5 25.7L49.7 27.7L53.8 29.7L57.9 24.8L62.1 26.8L66.2 28.8L70.3 30.8L74.5 26L78.6 28L82.8 30L86.9 25.2L91 27.2L95.2 29.2L99.3 24.3L103.4 26.3L107.6 28.3L111.7 30.3L115.9 25.5L120 29.9"/></svg></td></tr>
+</tbody>
+</table>
+</section>
+</main>
+<footer>
+<p>Refreshes every 2s · <a href="/?refresh=0">Pause refresh</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a></p>
+</footer>
+</body>
+</html>

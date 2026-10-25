@@ -1,0 +1,125 @@
+{{define "spark"}}<svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>{{.Title}}</title>{{if .Path}}<path d="{{.Path}}"/>{{end}}</svg>{{end -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{- if .Refresh}}
+<meta http-equiv="refresh" content="{{.Refresh}}">
+{{- end}}
+<title>{{.S.Host.Hostname}} · vitals</title>
+<style>{{.Style}}</style>
+</head>
+<body>
+<header>
+<h1><a href="{{.Self}}">{{.S.Host.Hostname}}</a></h1>
+<p>{{.System}} · up <span class="num">{{.Uptime}}</span> · sampled <time datetime="{{.S.SampledAt.Format "2006-01-02T15:04:05Z07:00"}}" class="num">{{.S.SampledAt.Format "2006-01-02 15:04:05 UTC"}}</time></p>
+{{- with index .S.Errors "host"}}
+<p class="error">Host details unavailable: {{.}}</p>
+{{- end}}
+</header>
+<main>
+<section aria-labelledby="cpu">
+<h2 id="cpu">CPU</h2>
+{{- with index .S.Errors "cpu"}}
+<p class="error">CPU unavailable: {{.}}</p>
+{{- end}}
+{{- with .S.CPU}}
+<div class="now"><span class="big num">{{pct .UsagePct}}</span>
+{{- template "spark" $.CPUSpark}}</div>
+<dl>
+<dt>Model</dt><dd>{{or .Model "—"}}</dd>
+<dt>Cores</dt><dd class="num">{{.Cores}}{{with .Darwin}} ({{.PCores}} P + {{.ECores}} E){{end}}</dd>
+<dt>Load</dt><dd class="num">{{with $.S.Host.Load}}{{load .}}{{else}}—{{end}}</dd>
+</dl>
+<ul class="cores">
+{{- range $.Cores}}
+<li><span class="label">{{.Label}}</span> <span class="bar"><i style="width:{{width .Pct}}%"></i></span> <span class="num">{{pct .Pct}}</span></li>
+{{- end}}
+</ul>
+{{- end}}
+</section>
+<section aria-labelledby="memory">
+<h2 id="memory">Memory</h2>
+{{- with index .S.Errors "memory"}}
+<p class="error">Memory unavailable: {{.}}</p>
+{{- end}}
+{{- with .S.Memory}}
+<div class="now"><span class="big num">{{bytes .UsedBytes}}</span> <span class="of">of {{bytes .TotalBytes}} used ({{mempct .}})</span>
+{{- template "spark" $.MemSpark}}</div>
+<dl>
+<dt>Available</dt><dd class="num">{{bytes .AvailableBytes}}</dd>
+<dt>Swap</dt><dd class="num">{{if .SwapTotalBytes}}{{bytes .SwapUsedBytes}} of {{bytes .SwapTotalBytes}}{{else}}none{{end}}</dd>
+{{- with .Darwin}}
+<dt>Pressure</dt><dd>{{with .Pressure}}<span class="pressure {{.}}">{{.}}</span>{{else}}unknown{{end}}</dd>
+<dt>Wired</dt><dd class="num">{{bytes .WiredBytes}}</dd>
+<dt>Compressed</dt><dd class="num">{{bytes .CompressedBytes}}</dd>
+<dt>Active</dt><dd class="num">{{bytes .ActiveBytes}}</dd>
+<dt>Inactive</dt><dd class="num">{{bytes .InactiveBytes}}</dd>
+<dt>File-backed</dt><dd class="num">{{bytes .FileBackedBytes}}</dd>
+{{- end}}
+</dl>
+{{- end}}
+</section>
+<section aria-labelledby="disks">
+<h2 id="disks">Disks</h2>
+{{- with index .S.Errors "disks"}}
+<p class="error">Disks: {{.}}</p>
+{{- end}}
+{{- if .S.Disks}}
+<table>
+<thead><tr><th scope="col">Mount</th><th scope="col">Used</th><th scope="col" class="r">Read<br>Write</th></tr></thead>
+<tbody>
+{{- range .S.Disks}}
+<tr><th scope="row">{{.Mount}}<small>{{.Device}} · {{.FS}}</small></th><td class="used"><span class="num">{{pct .UsedPct}}</span><span class="bar{{with level .UsedPct}} {{.}}{{end}}"><i style="width:{{width .UsedPct}}%"></i></span><small class="num">{{bytes .UsedBytes}} of {{bytes .TotalBytes}}</small></td><td class="r num">{{rate .ReadBps}}<br>{{rate .WriteBps}}</td></tr>
+{{- end}}
+</tbody>
+</table>
+{{- else if not (index .S.Errors "disks")}}
+<p class="none">No disks to show.</p>
+{{- end}}
+</section>
+<section aria-labelledby="network">
+<h2 id="network">Network</h2>
+{{- with index .S.Errors "network"}}
+<p class="error">Network unavailable: {{.}}</p>
+{{- end}}
+{{- if .S.Network}}
+<table>
+<thead><tr><th scope="col">Interface</th><th scope="col" class="r">Receive</th><th scope="col" class="r">Send</th></tr></thead>
+<tbody>
+{{- range $i, $n := .S.Network}}
+{{- $s := index $.NetSparks $i}}
+<tr><th scope="row">{{.Name}}</th><td class="r num">{{rate .RxBps}}<small>{{pps .RxPps}}</small><small>{{bytes .RxTotalBytes}} total</small></td><td class="r num">{{rate .TxBps}}<small>{{pps .TxPps}}</small><small>{{bytes .TxTotalBytes}} total</small></td></tr>
+<tr class="spark"><td colspan="3"><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>{{$s.Title}}</title>{{if $s.Rx}}<path d="{{$s.Rx}}"/>{{end}}{{if $s.Tx}}<path class="tx" d="{{$s.Tx}}"/>{{end}}</svg></td></tr>
+{{- end}}
+</tbody>
+</table>
+{{- else if not (index .S.Errors "network")}}
+<p class="none">No interfaces to show.</p>
+{{- end}}
+</section>
+{{- if or .S.Temps (index .S.Errors "temps")}}
+<section aria-labelledby="temps">
+<h2 id="temps">Temperatures</h2>
+{{- with index .S.Errors "temps"}}
+<p class="error">Temperatures unavailable: {{.}}</p>
+{{- end}}
+{{- if .S.Temps}}
+<table>
+<thead><tr><th scope="col">Sensor</th><th scope="col" class="r">Temperature</th></tr></thead>
+<tbody>
+{{- range .S.Temps}}
+<tr><th scope="row">{{.Label}}</th><td class="r num">{{temp .Celsius}}</td></tr>
+{{- end}}
+</tbody>
+</table>
+{{- end}}
+</section>
+{{- end}}
+</main>
+<footer>
+<p>{{if .Refresh}}Refreshes every {{.Refresh}}s{{else}}Refresh paused{{end}} · <a href="{{.Toggle}}">{{.ToggleLabel}}</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a></p>
+</footer>
+</body>
+</html>

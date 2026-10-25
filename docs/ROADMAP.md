@@ -14,33 +14,25 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M7, Linux temperatures, in review.
-- Next up: M8.
-- Open PRs waiting on review: M7.
+- Current: M8, the dashboard, in review.
+- Next up: M9.
+- Open PRs waiting on review: M8.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-None right now.
+- **Should the defaults hide interfaces that have never moved a byte?** (Blocks nothing; decision 25 deferred it to "once the dashboard shows how noisy that is".) On an M5 MacBook Air the dashboard's network card lists eight interfaces, and seven of them (`gif0`, `stf0`, `en1` to `en4`, `ap1`) read 0 B/s with 0 B total, so `en0` sits at the bottom of a phone-length list. Options: (a) keep PLAN's list as is; (b) add `gif.*`, `stf.*`, and `ap.*` to the default exclude list, which leaves the Thunderbolt `en1` to `en4`; (c) leave the list alone and have the renderers skip interfaces whose rx and tx totals are both 0, so a port shows up the moment it is used. Recommendation: (c), since it needs no guessing at names and also covers Linux's idle bridges, but it hides something JSON still shows, which is the maintainer's call. Lands in `filter.go` for (b), or in every renderer for (c).
 
 ---
 
 ## Open
 
-### M8: Dashboard
-
-- [ ] **A complete, JavaScript-free dashboard at `/`.**
-  *Needs:* M2.
-  `render/html.go` with `html/template`, `assets/dashboard.tmpl` and `assets/style.css` (embedded, and inlined into `<style>`), and `sparkline.go` (SVG paths from history). The layout, sparklines, disk bars, refresh rules, light and dark modes, typography, and accessibility as PLAN specifies. The route `/` serves HTML with the CSP header. Negotiation arrives in M10.
-
-  *Acceptance:* golden-file tests render a fixed snapshot plus history: a full darwin snapshot, a Linux snapshot with temps, a first-sample snapshot ("—" for every rate), and a snapshot with errors (the failing group's card says what failed while the others render). With 450 samples of history and 8 interfaces, the page is under 50 KB (a test asserts it). The page contains no `<script`, no `on*=` attributes, and no `http://` or `https://` URLs. Every `<svg>` has a `<title>`. Disks and network are `<table>`s, and each disk shows its percentage as text. The meta refresh is 2 at the default interval, 5 at `-interval 5s`, absent with `?refresh=0`, 10 with `?refresh=10`, and 2 with `?refresh=1`. Links carry `refresh` through. Sparkline tests cover an empty history, a single point, a flat line, and `null` gaps. A hostname containing `<script>` is escaped. The temperatures card is omitted when `temps` is `null`. `/` sends `Content-Security-Policy` exactly as PLAN lists it. *(maintainer)* the dashboard looks right on a phone and at desktop width, in both colour schemes.
-
 ### M9: Prometheus `/metrics`
 
 - [ ] **A scrape target Prometheus accepts.**
   *Needs:* M2.
-  `render/prom.go`, a hand-written exposition format 0.0.4 per PLAN's naming, served at `/metrics` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`.
+  `render/prom.go`, a hand-written exposition format 0.0.4 per PLAN's naming, served at `/metrics` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`. The dashboard's footer gains a `Metrics` link (decision 32).
 
   *Acceptance:* a golden file from a fixed full snapshot includes the four metric names the spec fixes, exactly. An in-repo grammar test (decision 8) checks every family: `# HELP` and `# TYPE` precede its samples, names match `[a-zA-Z_:][a-zA-Z0-9_:]*`, no family appears twice, there are no duplicate label sets, label values escape `\`, `"`, and newlines, and there are no `NaN` values unless intended. Unknown rates are omitted (the first-sample golden file has no `_per_second` samples). Ratios are within 0 to 1. A mount point and hostname with quotes and backslashes are escaped correctly. *(maintainer)* `promtool check metrics` accepts a live scrape.
 
@@ -48,7 +40,7 @@ None right now.
 
 - [ ] **`/` and `/api/v1/stats` speak HTML, JSON, text, and Prometheus, as the client asks.**
   *Needs:* M8, M9.
-  A pure `negotiate(query, accept, default) (format, error)` in `internal/server`, and `render/text.go` (aligned columns, binary units, readable at 80 columns). Both negotiable endpoints accept all four formats. Every negotiated response sets `Vary: Accept`.
+  A pure `negotiate(query, accept, default) (format, error)` in `internal/server`, and `render/text.go` (aligned columns, binary units, readable at 80 columns). Both negotiable endpoints accept all four formats. Every negotiated response sets `Vary: Accept`. The dashboard's footer gains a `Text` link to `/?format=text` (decision 32).
 
   *Acceptance:* a table-driven negotiation test covers: `?format=` beating `Accept`; each of the four format values; `?format=xml` → 406 listing the supported types; `Accept: application/json` → JSON; `Accept: text/html;q=0.5, application/json;q=0.9` → JSON; `q=0` excluding a type; `*/*` and a missing header → the endpoint default; `text/*` → text or HTML per q and order; `text/plain; version=0.0.4` → Prometheus while bare `text/plain` → text; `application/openmetrics-text` → Prometheus; `Accept: image/png` → 406; and `image/png, */*;q=0.1` → default. `405` still wins over negotiation for `POST`. A text golden file comes from a full snapshot, and a test asserts that no line exceeds 80 columns, even with a 60-character mount point (truncated with `…`, not wrapped). The first-sample text shows "—" for rates. *(maintainer)* `curl localhost:9110/?format=text` reads well in a terminal.
 
@@ -80,6 +72,7 @@ None right now.
 - **M5: Network.** Per-interface totals and rates on both platforms, darwin from `IFMIB_IFDATA` for true 64-bit counters, and the default interface list with `-net-exclude` in `filter.go` (decisions 24, 25).
 - **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28). *Decided* after M6: network filesystems join the default exclude list (decision 30).
 - **M7: Linux temperatures.** hwmon sensors labelled from `temp*_label` or `<chip>/temp<N>`, unique labels by suffix, unreadable sensors skipped, `"temps": null` with no sensors (decision 31).
+- **M8: Dashboard.** `/` renders `render.HTML` from the latest snapshot and history: cards per group with errors in place, SVG sparklines averaged into at most 120 points, disk and network tables, meta refresh with `?refresh=`, light and dark, and PLAN's CSP (decisions 32, 33).
 
 ---
 
