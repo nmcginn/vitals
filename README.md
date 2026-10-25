@@ -16,7 +16,7 @@ curl localhost:9110/api/v1/stats?pretty=1
 
 | Endpoint | Returns |
 | --- | --- |
-| `/` | the dashboard: a light/dark/auto toggle if JavaScript is on, fully usable without it; reloads every sample (`?refresh=N` seconds, `?refresh=0` to stop); `503` before the first sample |
+| `/` | the dashboard: collapsible cards and a light/dark/auto toggle, both remembered if JavaScript is on, fully usable without it; reloads every sample (`?refresh=N` seconds, `?refresh=0` to stop); `503` before the first sample |
 | `/api/v1/stats` | the latest sample as JSON (`?pretty=1` to indent); `503` before the first sample |
 | `/api/v1/history` | every buffered sample, oldest first; `?since=<unix seconds>` keeps those taken after it |
 | `/healthz` | `ok` once the first sample exists, `503 no sample yet` before |

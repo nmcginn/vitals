@@ -21,7 +21,8 @@
 </header>
 <main>
 <section aria-labelledby="cpu">
-<h2 id="cpu">CPU</h2>
+<details data-card="cpu" open>
+<summary><h2 id="cpu">CPU</h2></summary>
 {{- with index .S.Errors "cpu"}}
 <p class="error">CPU unavailable: {{.}}</p>
 {{- end}}
@@ -39,9 +40,11 @@
 {{- end}}
 </ul>
 {{- end}}
+</details>
 </section>
 <section aria-labelledby="memory">
-<h2 id="memory">Memory</h2>
+<details data-card="memory" open>
+<summary><h2 id="memory">Memory</h2></summary>
 {{- with index .S.Errors "memory"}}
 <p class="error">Memory unavailable: {{.}}</p>
 {{- end}}
@@ -61,9 +64,11 @@
 {{- end}}
 </dl>
 {{- end}}
+</details>
 </section>
 <section aria-labelledby="disks">
-<h2 id="disks">Disks</h2>
+<details data-card="disks" open>
+<summary><h2 id="disks">Disks</h2></summary>
 {{- with index .S.Errors "disks"}}
 <p class="error">Disks: {{.}}</p>
 {{- end}}
@@ -79,9 +84,11 @@
 {{- else if not (index .S.Errors "disks")}}
 <p class="none">No disks to show.</p>
 {{- end}}
+</details>
 </section>
 <section aria-labelledby="network">
-<h2 id="network">Network</h2>
+<details data-card="network" open>
+<summary><h2 id="network">Network</h2></summary>
 {{- with index .S.Errors "network"}}
 <p class="error">Network unavailable: {{.}}</p>
 {{- end}}
@@ -99,10 +106,12 @@
 {{- else if not (index .S.Errors "network")}}
 <p class="none">No interfaces to show.</p>
 {{- end}}
+</details>
 </section>
 {{- if or .S.Temps (index .S.Errors "temps")}}
 <section aria-labelledby="temps">
-<h2 id="temps">Temperatures</h2>
+<details data-card="temps" open>
+<summary><h2 id="temps">Temperatures</h2></summary>
 {{- with index .S.Errors "temps"}}
 <p class="error">Temperatures unavailable: {{.}}</p>
 {{- end}}
@@ -116,6 +125,7 @@
 </tbody>
 </table>
 {{- end}}
+</details>
 </section>
 {{- end}}
 </main>

@@ -150,3 +150,22 @@ td.r { white-space: nowrap; }
 }
 /* An inline-block keeps the button's underline off the separator. */
 #theme::before { content: "·\a0"; display: inline-block; color: var(--muted); }
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary h2::before {
+  content: "▾";
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+details:not([open]) summary h2 { margin-bottom: 0; }
+details:not([open]) summary h2::before { content: "▸"; }
+/* A closed card is just its heading, not a box as tall as its neighbour. */
+section:has(details:not([open])) { align-self: start; }
+/* Cards the reader closed, hidden from first paint until the script closes
+   the cards themselves (decision 34). One line per card. */
+:root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
+:root[data-closed~="memory"] [data-card="memory"] > :not(summary),
+:root[data-closed~="disks"] [data-card="disks"] > :not(summary),
+:root[data-closed~="network"] [data-card="network"] > :not(summary),
+:root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }

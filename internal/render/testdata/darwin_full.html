@@ -157,38 +157,88 @@ td.r { white-space: nowrap; }
 }
 /* An inline-block keeps the button's underline off the separator. */
 #theme::before { content: "·\a0"; display: inline-block; color: var(--muted); }
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary h2::before {
+  content: "▾";
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+details:not([open]) summary h2 { margin-bottom: 0; }
+details:not([open]) summary h2::before { content: "▸"; }
+/* A closed card is just its heading, not a box as tall as its neighbour. */
+section:has(details:not([open])) { align-self: start; }
+/* Cards the reader closed, hidden from first paint until the script closes
+   the cards themselves (decision 34). One line per card. */
+:root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
+:root[data-closed~="memory"] [data-card="memory"] > :not(summary),
+:root[data-closed~="disks"] [data-card="disks"] > :not(summary),
+:root[data-closed~="network"] [data-card="network"] > :not(summary),
+:root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }
 </style>
-<script>// The theme toggle (decision 34). The page works without this: it follows
-// the system's colour scheme, and the toggle stays hidden. Runs in <head> so
-// a stored theme applies before the first paint on every refresh.
+<script>// Conveniences on top of a page that works without them (decision 34): a
+// theme toggle, and cards that stay collapsed across refreshes. Without this
+// script the page follows the system's colour scheme, the toggle stays
+// hidden, and cards still collapse but reopen on the next refresh. It runs in
+// <head> so stored choices apply before the first paint on every refresh.
 (function () {
   var root = document.documentElement;
-  var modes = ["auto", "light", "dark"];
-  var mode = "auto";
-  try {
-    mode = localStorage.getItem("vitals-theme") || "auto";
-  } catch (e) {} // storage blocked: the toggle still works until reload
-  if (modes.indexOf(mode) < 0) mode = "auto";
 
-  function apply() {
+  function load(key) {
+    try {
+      return localStorage.getItem(key) || "";
+    } catch (e) {
+      return ""; // storage blocked: choices last until the next reload
+    }
+  }
+  function save(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {}
+  }
+
+  var modes = ["auto", "light", "dark"];
+  var mode = load("vitals-theme");
+  if (modes.indexOf(mode) < 0) mode = "auto";
+  function applyTheme() {
     if (mode === "auto") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", mode);
     var button = document.getElementById("theme");
     if (button) button.textContent = "Theme: " + mode;
   }
-  apply();
+  applyTheme();
+
+  // The closed cards' names, space-separated. Until the cards exist, the
+  // stylesheet hides their contents by this attribute.
+  var closed = load("vitals-closed");
+  if (closed) root.setAttribute("data-closed", closed);
 
   document.addEventListener("DOMContentLoaded", function () {
     var button = document.getElementById("theme");
     button.hidden = false;
-    apply();
+    applyTheme();
     button.addEventListener("click", function () {
       mode = modes[(modes.indexOf(mode) + 1) % modes.length];
-      try {
-        localStorage.setItem("vitals-theme", mode);
-      } catch (e) {}
-      apply();
+      save("vitals-theme", mode);
+      applyTheme();
     });
+
+    var cards = document.querySelectorAll("details[data-card]");
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      if ((" " + closed + " ").indexOf(" " + cards[i].dataset.card + " ") >= 0) {
+        cards[i].open = false;
+      }
+      cards[i].addEventListener("toggle", function () {
+        var names = [];
+        for (var j = 0; j < cards.length; j++) {
+          if (!cards[j].open) names.push(cards[j].dataset.card);
+        }
+        save("vitals-closed", names.join(" "));
+      });
+    }
+    root.removeAttribute("data-closed");
   });
 })();
 </script>
@@ -200,7 +250,8 @@ td.r { white-space: nowrap; }
 </header>
 <main>
 <section aria-labelledby="cpu">
-<h2 id="cpu">CPU</h2>
+<details data-card="cpu" open>
+<summary><h2 id="cpu">CPU</h2></summary>
 <div class="now"><span class="big num">6.2%</span><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>CPU usage over the last 58 s, now 6.2%</title><path d="M4.1 19.9L8.3 8.8L12.4 27.7L16.6 16.6L20.7 5.5L24.8 24.4L29 13.3L33.1 2.2L37.2 21.1L41.4 10L45.5 28.9L49.7 17.8L53.8 6.7L57.9 25.6L62.1 14.5L66.2 3.4L70.3 22.3L74.5 11.2L78.6 30.1L82.8 19L86.9 7.9L91 26.8L95.2 15.7L99.3 4.6L103.4 23.5L107.6 12.4L111.7 1.3L115.9 20.2L120 29.1"/></svg></div>
 <dl>
 <dt>Model</dt><dd>Apple M4</dd>
@@ -219,9 +270,11 @@ td.r { white-space: nowrap; }
 <li><span class="label">E8</span> <span class="bar"><i style="width:0.0%"></i></span> <span class="num">0.0%</span></li>
 <li><span class="label">E9</span> <span class="bar"><i style="width:16.0%"></i></span> <span class="num">16.0%</span></li>
 </ul>
+</details>
 </section>
 <section aria-labelledby="memory">
-<h2 id="memory">Memory</h2>
+<details data-card="memory" open>
+<summary><h2 id="memory">Memory</h2></summary>
 <div class="now"><span class="big num">9.0 GiB</span> <span class="of">of 16.0 GiB used (56.2%)</span><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>Memory used over the last 58 s, now 56.2%</title><path d="M0 19L4.1 16.9L8.3 14.8L12.4 12.7L16.6 10.6L20.7 17.5L24.8 15.4L29 13.3L33.1 11.2L37.2 18.1L41.4 16L45.5 13.9L49.7 11.8L53.8 18.7L57.9 16.6L62.1 14.5L66.2 12.4L70.3 10.3L74.5 17.2L78.6 15.1L82.8 13L86.9 10.9L91 17.8L95.2 15.7L99.3 13.6L103.4 11.5L107.6 18.4L111.7 16.3L115.9 14.2L120 14.1"/></svg></div>
 <dl>
 <dt>Available</dt><dd class="num">7.0 GiB</dd>
@@ -233,18 +286,22 @@ td.r { white-space: nowrap; }
 <dt>Inactive</dt><dd class="num">3.0 GiB</dd>
 <dt>File-backed</dt><dd class="num">2.5 GiB</dd>
 </dl>
+</details>
 </section>
 <section aria-labelledby="disks">
-<h2 id="disks">Disks</h2>
+<details data-card="disks" open>
+<summary><h2 id="disks">Disks</h2></summary>
 <table>
 <thead><tr><th scope="col">Mount</th><th scope="col">Used</th><th scope="col" class="r">Read<br>Write</th></tr></thead>
 <tbody>
 <tr><th scope="row">/<small>/dev/disk3s1 · apfs</small></th><td class="used"><span class="num">24.3%</span><span class="bar"><i style="width:24.3%"></i></span><small class="num">112.0 GiB of 460.4 GiB</small></td><td class="r num">0 B/s<br>40.0 KiB/s</td></tr>
 </tbody>
 </table>
+</details>
 </section>
 <section aria-labelledby="network">
-<h2 id="network">Network</h2>
+<details data-card="network" open>
+<summary><h2 id="network">Network</h2></summary>
 <table>
 <thead><tr><th scope="col">Interface</th><th scope="col" class="r">Receive</th><th scope="col" class="r">Send</th></tr></thead>
 <tbody>
@@ -252,6 +309,7 @@ td.r { white-space: nowrap; }
 <tr class="spark"><td colspan="3"><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>en0 receive (solid) and send (dashed) over the last 58 s, peak 90.0 KiB/s</title><path d="M4.1 13.3L8.3 28M16.6 25L20.7 7.3L24.8 22L29 4.3L33.1 19L37.2 1.3L41.4 16L45.5 30.7L49.7 13L53.8 27.7L57.9 10L62.1 24.7L66.2 7L70.3 21.7L74.5 4L78.6 18.7L82.8 1L86.9 15.7L91 30.3L95.2 12.7L99.3 27.3L103.4 9.7L107.6 24.3L111.7 6.7L115.9 21.3L120 26.8"/><path class="tx" d="M4.1 26.2L8.3 28.2M16.6 25.3L20.7 27.3L24.8 29.3L29 24.5L33.1 26.5L37.2 28.5L41.4 30.5L45.5 25.7L49.7 27.7L53.8 29.7L57.9 24.8L62.1 26.8L66.2 28.8L70.3 30.8L74.5 26L78.6 28L82.8 30L86.9 25.2L91 27.2L95.2 29.2L99.3 24.3L103.4 26.3L107.6 28.3L111.7 30.3L115.9 25.5L120 29.9"/></svg></td></tr>
 </tbody>
 </table>
+</details>
 </section>
 </main>
 <footer>

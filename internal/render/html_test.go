@@ -115,7 +115,7 @@ func TestHTMLContent(t *testing.T) {
 	t.Run("disks and network are tables, and each disk's percentage is text", func(t *testing.T) {
 		page := mustHTML(t, linuxPartial(), nil, Page{})
 		for _, want := range []string{
-			`<h2 id="disks">Disks</h2>` + "\n<table>",
+			`<summary><h2 id="disks">Disks</h2></summary>` + "\n<table>",
 			`<span class="num">20.0%</span>`, `<span class="num">75.0%</span>`,
 			// the zero-size filesystem has no percentage, and says so
 			`<td class="used"><span class="num">—</span><span class="bar"><i style="width:0%"></i></span>`,
@@ -124,7 +124,7 @@ func TestHTMLContent(t *testing.T) {
 				t.Errorf("page lacks %q", want)
 			}
 		}
-		if page := mustHTML(t, darwinFull(), nil, Page{}); !strings.Contains(page, `<h2 id="network">Network</h2>`+"\n<table>") {
+		if page := mustHTML(t, darwinFull(), nil, Page{}); !strings.Contains(page, `<summary><h2 id="network">Network</h2></summary>`+"\n<table>") {
 			t.Error("network is not a table")
 		}
 	})
@@ -181,7 +181,7 @@ func TestHTMLContent(t *testing.T) {
 
 	t.Run("a failed network group shows its error and no empty table", func(t *testing.T) {
 		page := mustHTML(t, linuxPartial(), nil, Page{})
-		if !strings.Contains(page, "Network unavailable: reading /proc/net/dev: permission denied</p>\n</section>") {
+		if !strings.Contains(page, "Network unavailable: reading /proc/net/dev: permission denied</p>\n</details>\n</section>") {
 			t.Error("network card doesn't end with its error")
 		}
 	})
@@ -294,15 +294,15 @@ func TestHTMLTheme(t *testing.T) {
 		}
 	})
 
-	t.Run("the script makes no network requests and touches only its own storage key", func(t *testing.T) {
+	t.Run("the script makes no network requests and touches only its own storage keys", func(t *testing.T) {
 		js := string(script)
 		for _, banned := range []string{"fetch", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "import", "src", "http", "cookie", "eval", "innerHTML"} {
 			if strings.Contains(js, banned) {
 				t.Errorf("theme.js uses %q", banned)
 			}
 		}
-		if strings.Count(js, "localStorage") != 2 || strings.Count(js, `"vitals-theme"`) != 2 {
-			t.Error("theme.js should read and write only the vitals-theme key")
+		if strings.Count(js, "localStorage") != 2 || strings.Count(js, `"vitals-theme"`) != 2 || strings.Count(js, `"vitals-closed"`) != 2 {
+			t.Error("theme.js should read and write only the vitals-theme and vitals-closed keys, through load and save")
 		}
 	})
 
@@ -310,6 +310,42 @@ func TestHTMLTheme(t *testing.T) {
 		sum := sha256.Sum256([]byte(script))
 		if want := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; ScriptHash != want {
 			t.Errorf("ScriptHash = %s, want %s", ScriptHash, want)
+		}
+	})
+}
+
+var cardOpen = regexp.MustCompile(`<section aria-labelledby="(\w+)">\n<details data-card="(\w+)" open>\n<summary><h2 id="(\w+)">`)
+
+func TestHTMLCollapsibleCards(t *testing.T) {
+	for _, tc := range htmlCases {
+		s := tc.snap()
+		page := mustHTML(t, s, historyOf(s, tc.history), Page{})
+
+		t.Run(tc.name+": every card is an open details whose summary is its heading", func(t *testing.T) {
+			cards := cardOpen.FindAllStringSubmatch(page, -1)
+			if n := strings.Count(page, "<section"); n == 0 || len(cards) != n || strings.Count(page, "</details>\n</section>") != n {
+				t.Fatalf("%d sections, %d built as collapsible cards", n, len(cards))
+			}
+			for _, c := range cards {
+				if c[1] != c[2] || c[2] != c[3] {
+					t.Errorf("card names disagree: section %q, details %q, heading %q", c[1], c[2], c[3])
+				}
+			}
+		})
+
+		t.Run(tc.name+": every card has a stylesheet rule that hides it closed from first paint", func(t *testing.T) {
+			for _, c := range cardOpen.FindAllStringSubmatch(page, -1) {
+				rule := `:root[data-closed~="` + c[2] + `"] [data-card="` + c[2] + `"] > :not(summary)`
+				if !strings.Contains(page, rule) {
+					t.Errorf("no rule %s, so a closed %s card flashes open on each refresh", rule, c[2])
+				}
+			}
+		})
+	}
+
+	t.Run("the temperatures card is collapsible too when it appears", func(t *testing.T) {
+		if page := mustHTML(t, linuxPartial(), nil, Page{}); !strings.Contains(page, `<details data-card="temps" open>`) {
+			t.Error("temps card isn't collapsible")
 		}
 	})
 }

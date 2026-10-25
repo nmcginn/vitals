@@ -164,6 +164,7 @@ One server-rendered HTML page, built with `html/template`, **under 50 KB**, with
 - **Disk usage:** a horizontal bar per mount, using a styled `<meter>` or a CSS width. Colour reinforces but is never the only signal: the percentage is shown as text too.
 - **Refresh:** `<meta http-equiv="refresh">` set to the sample interval, with a **minimum of 2s**. `?refresh=0` disables it, and `?refresh=N` overrides it. Links on the page carry the `refresh` value through. **Assumption:** a non-integer or negative `refresh` is ignored, and a value of 1 is raised to 2.
 - **Styling:** one embedded stylesheet (via `embed`) inlined into a `<style>` tag, so each page load is one response. Light and dark modes through `prefers-color-scheme`, using CSS custom properties, which a footer toggle (Auto, Light, Dark) overrides and remembers in the browser (decision 34). The system UI font stack for text, and a monospace stack with `font-variant-numeric: tabular-nums` for figures, so numbers don't jitter between refreshes.
+- **Collapsible cards:** each card is a `<details open>` with its heading as the `<summary>`. The script remembers which cards were closed across refreshes (decision 34).
 - **Accessibility:** a semantic heading per card, real `<table>` elements for disks and network, and a `<title>` element in every SVG.
 
 ### Configuration
