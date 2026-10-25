@@ -116,7 +116,7 @@ func TestDownsample(t *testing.T) {
 		}
 	})
 
-	t.Run("450 samples become sparkPoints buckets of their mean", func(t *testing.T) {
+	t.Run("450 samples become sparkPoints buckets, each the peak of its samples", func(t *testing.T) {
 		s := make(series, 450)
 		for i := range s {
 			s[i] = float64(i % 2 * 10) // 0, 10, 0, 10, …
@@ -126,13 +126,21 @@ func TestDownsample(t *testing.T) {
 			t.Fatalf("len = %d, want %d", len(got), sparkPoints)
 		}
 		for i, v := range got {
-			if v < 0 || v > 10 || math.IsNaN(v) {
-				t.Errorf("bucket %d = %v, want a mean within 0 to 10", i, v)
+			if v != 10 {
+				t.Errorf("bucket %d = %v, want the peak, 10", i, v)
 			}
 		}
 	})
 
-	t.Run("a bucket with nothing known stays a gap, and unknowns don't drag a mean down", func(t *testing.T) {
+	t.Run("a single-sample spike keeps its full height", func(t *testing.T) {
+		s := make(series, 450)
+		s[200] = 100 // one 2s spike in 15 minutes of idle
+		if got := peak(downsample(s)); got != 100 {
+			t.Errorf("tallest point = %v, want 100", got)
+		}
+	})
+
+	t.Run("a bucket with nothing known stays a gap, and a partly known bucket takes its known peak", func(t *testing.T) {
 		s := make(series, 2*sparkPoints)
 		for i := range s {
 			s[i] = 50

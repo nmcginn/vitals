@@ -20,8 +20,9 @@ const (
 // can't be known (a first-sample rate, a failed group), drawn as a gap.
 type series []float64
 
-// downsample averages consecutive values into at most sparkPoints buckets,
-// skipping unknowns. A bucket with nothing known stays a gap.
+// downsample keeps the peak of each run of consecutive values, in at most
+// sparkPoints buckets, so a short spike still reaches its full height (decision
+// 33). Unknowns are skipped, and a bucket with nothing known stays a gap.
 func downsample(s series) series {
 	if len(s) <= sparkPoints {
 		return s
@@ -29,16 +30,11 @@ func downsample(s series) series {
 	out := make(series, sparkPoints)
 	for i := range out {
 		lo, hi := i*len(s)/sparkPoints, (i+1)*len(s)/sparkPoints
-		sum, n := 0.0, 0
-		for _, v := range s[lo:hi] {
-			if !math.IsNaN(v) {
-				sum += v
-				n++
-			}
-		}
 		out[i] = math.NaN()
-		if n > 0 {
-			out[i] = sum / float64(n)
+		for _, v := range s[lo:hi] {
+			if !math.IsNaN(v) && (math.IsNaN(out[i]) || v > out[i]) {
+				out[i] = v
+			}
 		}
 	}
 	return out
