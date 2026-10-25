@@ -76,7 +76,7 @@ Linux reads `btime` from `/proc/stat` for `boot_time` and `/proc/uptime` for `up
 
 ### 18. Unbuilt groups are errors until their milestone lands
 
-Until M3 to M7 land, `cpu`, `memory`, `disks`, `network`, and (on Linux) `temps` are `null` with `"not implemented yet"` in `errors`, and the sampler logs each once a minute at `warn`, like any failing group. On darwin `temps` is simply `null` with no error, which is its v1 behaviour. Each milestone deletes its group from `pending(…)` in its platform's `Collect`. `-disk-exclude` and `-net-exclude` are parsed and validated now, and wired to collectors in M6 and M5.
+Until M3 to M7 land, `cpu`, `memory`, `disks`, `network`, and (on Linux) `temps` are `null` with `"not implemented yet"` in `errors`, and the sampler logs each once a minute at `warn`, like any failing group. On darwin `temps` is simply `null` with no error, which is its v1 behaviour. Each milestone deletes its group from `pending(…)` in its platform's `Collect`. `-disk-exclude` and `-net-exclude` are parsed and validated now, and wired to collectors in M6 and M5. *Amended in M7:* every group has landed, so `pending` is gone.
 
 ### 19. The shim is linted, analyzed, and sanitized on the Mac, apart from the cgo build
 
@@ -126,3 +126,7 @@ SPEC's "roughly 1,000 to 1,200 lines of Go" was a first guess at the size of v1,
 ### 30. Network filesystems are in the default disk exclude list
 
 `statfs` on an NFS or CIFS mount whose server has gone away can block for minutes (forever with NFS `hard`), and the sampler can't interrupt a syscall, so one dead share would leave every group stale. Darwin already avoids this by refreshing only local mounts (decision 28); Linux has no cached figures to fall back on. So the default list also excludes the fs types `nfs`, `nfs4`, `cifs`, `smb3`, `fuse.sshfs`, and `9p`, and someone who wants them back names their own `-disk-exclude`, accepting the risk. A goroutine per network mount with a timeout was rejected as more machinery than the problem deserves. Darwin's NFS mounts also report `nfs` and are now left out too, while its `smbfs` shares are still listed with the kernel's cached sizes. This adds to PLAN's list, which named only pseudo filesystems and snap mounts. *Decided by the maintainer after M6.*
+
+### 31. Linux temperatures: hwmon only, quiet about unreadable sensors
+
+Temperatures come from `/sys/class/hwmon/hwmon*/temp<N>_input` alone, not `/sys/class/thermal`, which mostly repeats the same sensors under other names. A sensor's label is its `temp<N>_label`, else `<chip name>/temp<N>` (the directory name stands in for a missing `name`). Chips and sensors are read in numeric order (`hwmon10` after `hwmon9`), and a label already taken gets ` #2`, ` #3`, …, so a dual-socket machine's second `Core 0` is `Core 0 #2` on every sample and Prometheus series never collide. Drivers routinely expose inputs that can't be read (`-ENODATA` for an unconnected probe), so an unreadable or garbled sensor is skipped without an error; otherwise many machines would show a failed group forever. The group fails only when `/sys/class/hwmon` can't be listed, or when there were sensors and none could be read. No hwmon directory, or no temperature inputs, is `"temps": null` with no error. Values are not sanity-filtered.

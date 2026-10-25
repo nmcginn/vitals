@@ -11,6 +11,8 @@ and should be replaced by captures when such a machine is to hand.
   `proc/self/mounts`, `proc/diskstats`, and `sys/block` add an NVMe root and EFI
   partition, a SATA disk mounted at `/media\040lib` and bind-mounted again, an LVM
   volume, an unmapped USB stick at `/mnt/usb\011stick`, a CIFS share, and the
-  pseudo, snap, and Docker mounts the default list drops.
+  pseudo, snap, and Docker mounts the default list drops. `sys/class/hwmon` has an
+  `acpitz` zone, a labelled `coretemp` package and eight cores, and an unlabelled
+  `nvme` chip, with the `_crit`, `_max`, and `_min` files real chips carry.
 - `arm64-graviton2/`: hand-written. `proc/stat` and `proc/cpuinfo` for a 4-vCPU
   AWS Graviton2 (Neoverse N1), whose cpuinfo has no `model name`.
