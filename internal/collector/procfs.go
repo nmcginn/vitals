@@ -17,13 +17,19 @@ import (
 // run it against fixture trees on any OS (decision 6). Paths have no leading
 // slash, as fs.FS requires.
 type procfs struct {
-	fsys fs.FS
-	opts Options
-	info HostInfo
+	fsys   fs.FS
+	statfs statfsFunc
+	opts   Options
+	info   HostInfo
 }
 
-func newProcfs(fsys fs.FS, opts Options) *procfs {
-	p := &procfs{fsys: fsys, opts: opts}
+// statfsFunc gives a mounted filesystem's size and the bytes an unprivileged
+// user can still write to it. It's injected so disk tests never touch the real
+// filesystem (decision 6).
+type statfsFunc func(mount string) (total, avail uint64, err error)
+
+func newProcfs(fsys fs.FS, statfs statfsFunc, opts Options) *procfs {
+	p := &procfs{fsys: fsys, statfs: statfs, opts: opts}
 	p.info = HostInfo{
 		Hostname:  p.line("proc/sys/kernel/hostname"),
 		OS:        "linux",
@@ -38,7 +44,7 @@ func newProcfs(fsys fs.FS, opts Options) *procfs {
 func (p *procfs) Static() HostInfo { return p.info }
 
 func (p *procfs) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupDisks, GroupTemps)}
+	raw := Raw{Errors: pending(GroupTemps)}
 	// The host and CPU groups both read /proc/stat, which on a big machine is
 	// mostly one long intr line, so it's read once.
 	if stat, err := p.read("proc/stat"); err != nil {
@@ -65,7 +71,137 @@ func (p *procfs) Collect(ctx context.Context) (Raw, error) {
 	} else {
 		raw.Network = keepIfaces(n, p.opts.NetExclude)
 	}
+	// A mount that statfs can't read is left out and named in the error, and
+	// the others are still served.
+	d, err := p.disks()
+	if raw.Disks = d; err != nil {
+		raw.Errors[GroupDisks] = err
+	}
 	return raw, nil
+}
+
+// disks reads /proc/self/mounts, "device mount fstype options 0 0", keeps
+// what the exclude list allows, and asks statfs for each one's size.
+func (p *procfs) disks() ([]Disk, error) {
+	s, err := p.read("proc/self/mounts")
+	if err != nil {
+		return nil, err
+	}
+	var all []Disk
+	n := 0
+	for l := range strings.Lines(s) {
+		n++
+		f := strings.Fields(l)
+		if len(f) < 3 {
+			return nil, fmt.Errorf("parsing /proc/self/mounts: line %d is %q, want a device, a mount point, and a type", n, strings.TrimSpace(l))
+		}
+		all = append(all, Disk{Device: unescapeMount(f[0]), Mount: unescapeMount(f[1]), FS: f[2]})
+	}
+	ds := keepDisks(all, p.opts.DiskExclude)
+	io, ioErr := p.diskIO()
+	var bad []string
+	kept := ds[:0]
+	for _, d := range ds {
+		if d.TotalBytes, d.FreeBytes, err = p.statfs(d.Mount); err != nil {
+			bad = append(bad, fmt.Sprintf("statfs %s: %v", d.Mount, err))
+			continue
+		}
+		d.IO = io(d.Device)
+		kept = append(kept, d)
+	}
+	if ioErr != nil {
+		bad = append(bad, ioErr.Error())
+	}
+	if len(bad) > 0 {
+		return kept, errors.New(strings.Join(bad, "; "))
+	}
+	return kept, nil
+}
+
+// unescapeMount undoes the octal escapes the kernel writes in mount paths:
+// \040 for a space, \011 a tab, \012 a newline, and \134 a backslash.
+func unescapeMount(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+4 <= len(s) {
+			if c, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(c))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// diskIO returns a lookup from a mount's device to the cumulative counters of
+// the whole disk behind it (decision 7): /dev/nvme0n1p2 counts as nvme0n1. A
+// partition is a directory with a "partition" file under its disk in
+// /sys/block. A device-mapper volume (/dev/mapper/vg0-data) is found by its
+// dm/name and counted as itself, since it may span several disks. Anything
+// else, such as a network share or /dev/root, has no counters, which the
+// sampler shows as null rates. /proc/diskstats counts 512-byte sectors on
+// every device, whatever its real sector size.
+func (p *procfs) diskIO() (func(device string) *DiskIO, error) {
+	none := func(string) *DiskIO { return nil }
+	s, err := p.read("proc/diskstats")
+	if err != nil {
+		return none, err
+	}
+	// "major minor name reads merged sectors ms writes merged sectors ..."
+	stats := map[string][2]uint64{}
+	for l := range strings.Lines(s) {
+		f := strings.Fields(l)
+		if len(f) < 10 {
+			return none, fmt.Errorf("parsing /proc/diskstats: line %q has %d fields, want at least 10", strings.TrimSpace(l), len(f))
+		}
+		r, err1 := strconv.ParseUint(f[5], 10, 64)
+		w, err2 := strconv.ParseUint(f[9], 10, 64)
+		if err1 != nil || err2 != nil {
+			return none, fmt.Errorf("parsing /proc/diskstats: %s has sector counts %q and %q", f[2], f[5], f[9])
+		}
+		stats[f[2]] = [2]uint64{r * 512, w * 512}
+	}
+	disks, err := fs.ReadDir(p.fsys, "sys/block")
+	if err != nil {
+		return none, fmt.Errorf("reading /sys/block: %w", err)
+	}
+	whole, mapper := map[string]string{}, map[string]string{}
+	for _, d := range disks {
+		disk := d.Name()
+		whole[disk] = disk
+		if name := p.line("sys/block/" + disk + "/dm/name"); name != "" {
+			mapper[name] = disk
+		}
+		parts, _ := fs.ReadDir(p.fsys, "sys/block/"+disk)
+		for _, part := range parts {
+			if !strings.HasPrefix(part.Name(), disk) {
+				continue
+			}
+			if _, err := fs.Stat(p.fsys, "sys/block/"+disk+"/"+part.Name()+"/partition"); err == nil {
+				whole[part.Name()] = disk
+			}
+		}
+	}
+	return func(device string) *DiskIO {
+		name, ok := strings.CutPrefix(device, "/dev/")
+		if !ok {
+			return nil
+		}
+		if m, ok := strings.CutPrefix(name, "mapper/"); ok {
+			name = mapper[m]
+		}
+		disk, ok := whole[name]
+		st, ok2 := stats[disk]
+		if !ok || !ok2 {
+			return nil
+		}
+		return &DiskIO{Device: disk, ReadBytes: st[0], WriteBytes: st[1]}
+	}, nil
 }
 
 // network reads /proc/net/dev: two header lines, then one line per interface,

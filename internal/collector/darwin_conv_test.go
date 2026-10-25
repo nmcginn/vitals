@@ -2,6 +2,8 @@ package collector
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -290,4 +292,83 @@ func TestCoreKinds(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDisksFromStatfs(t *testing.T) {
+	// getfsstat on an Apple M5 MacBook Air (macOS 26), as `mount` and `df -k`
+	// listed it: every APFS volume of the internal disk reports the
+	// container's size and free space.
+	const bsize, container, avail = 4096, 120686613, 89231218
+	mac := []fsMount{
+		{"/", "/dev/disk3s1s1", "apfs", bsize, container, avail},
+		{"/dev", "devfs", "devfs", 512, 400, 0},
+		{"/System/Volumes/VM", "/dev/disk3s6", "apfs", bsize, container, avail},
+		{"/System/Volumes/Preboot", "/dev/disk3s2", "apfs", bsize, container, avail},
+		{"/System/Volumes/Update", "/dev/disk3s4", "apfs", bsize, container, avail},
+		{"/System/Volumes/xarts", "/dev/disk1s2", "apfs", bsize, 140800, 135061},
+		{"/System/Volumes/iSCPreboot", "/dev/disk1s1", "apfs", bsize, 140800, 135061},
+		{"/System/Volumes/Hardware", "/dev/disk1s3", "apfs", bsize, 140800, 135061},
+		{"/System/Volumes/Data", "/dev/disk3s5", "apfs", bsize, container, avail},
+		{"/System/Volumes/Data/home", "map auto_home", "autofs", bsize, 0, 0},
+		{"/System/Volumes/Update/SFR/mnt1", "/dev/disk2s1", "apfs", bsize, 1310709, 923918},
+		{"/System/Volumes/Update/mnt1", "/dev/disk3s1", "apfs", bsize, container, avail},
+		{"/Volumes/Backup Disk", "/dev/disk5s1", "apfs", bsize, 488378646, 300000000},
+		{"/Volumes/share", "//nas._smb._tcp.local/share", "smbfs", 4096, 1000, 400},
+	}
+
+	t.Run("only / and the user's volumes are left once devfs, autofs, and /System/Volumes are excluded", func(t *testing.T) {
+		got := disksFromStatfs(mac, nil)
+		want := []Disk{
+			{Mount: "/", Device: "/dev/disk3s1s1", FS: "apfs", TotalBytes: container * bsize, FreeBytes: avail * bsize},
+			{Mount: "/Volumes/Backup Disk", Device: "/dev/disk5s1", FS: "apfs", TotalBytes: 488378646 * bsize, FreeBytes: 300000000 * bsize},
+			{Mount: "/Volumes/share", Device: "//nas._smb._tcp.local/share", FS: "smbfs", TotalBytes: 4096000, FreeBytes: 1638400},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("disks = %+v\nwant    %+v", got, want)
+		}
+	})
+
+	t.Run("free is the container's available space, so / counts every volume's use as Finder does", func(t *testing.T) {
+		d := disksFromStatfs(mac[:1], nil)[0]
+		// 494 GB with 365 GB available: 129 GB used, 26%, where df's 5% is
+		// the sealed system volume alone.
+		if used := d.TotalBytes - d.FreeBytes; used != (container-avail)*bsize {
+			t.Errorf("used = %d, want %d", used, (container-avail)*bsize)
+		}
+	})
+
+	t.Run("a user's -disk-exclude replaces the defaults", func(t *testing.T) {
+		got := disksFromStatfs(mac, regexp.MustCompile(`^(devfs|autofs|smbfs|/Volumes/.*)$`))
+		if len(got) != 10 || got[0].Mount != "/" || got[1].Mount != "/System/Volumes/VM" {
+			t.Errorf("got %d disks starting %+v", len(got), got)
+		}
+	})
+
+	t.Run("sizes multiply in 64 bits past 4 GiB of blocks", func(t *testing.T) {
+		d := disksFromStatfs([]fsMount{{"/", "/dev/disk3s1s1", "apfs", 1 << 20, 1 << 33, 1 << 32}}, nil)[0]
+		if d.TotalBytes != 1<<53 || d.FreeBytes != 1<<52 {
+			t.Errorf("total %d, free %d", d.TotalBytes, d.FreeBytes)
+		}
+	})
+}
+
+func TestDiskIOFromShim(t *testing.T) {
+	t.Run("the driver's counters are keyed by the whole disk's name", func(t *testing.T) {
+		got := diskIOFromShim(0, "disk0", 689591828480, 451120357376)
+		if got == nil || *got != (DiskIO{Device: "disk0", ReadBytes: 689591828480, WriteBytes: 451120357376}) {
+			t.Errorf("got %+v", got)
+		}
+	})
+	for rc, why := range map[int]string{-1: "no IOMedia by that name", -2: "no IOBlockStorageDriver above it", -3: "a VM disk without statistics"} {
+		t.Run(fmt.Sprintf("%s (%d) gives no counters, so null rates, not a failed group", why, rc), func(t *testing.T) {
+			if got := diskIOFromShim(rc, "disk0", 1, 2); got != nil {
+				t.Errorf("got %+v, want nil", got)
+			}
+		})
+	}
+	t.Run("a driver whose disk has no BSD name gives no counters, since nothing could key them", func(t *testing.T) {
+		if got := diskIOFromShim(0, "", 1, 2); got != nil {
+			t.Errorf("got %+v, want nil", got)
+		}
+	})
 }

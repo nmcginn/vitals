@@ -4,7 +4,7 @@ A tiny, read-only system monitor for one machine. It's built for a Mac Mini, and
 
 `vitals` is a single Go binary that reports the vital statistics of the host it runs on: CPU (with Apple Silicon's performance and efficiency cores), memory (with macOS memory pressure, wired, and compressed), disks, network, and, on Linux, temperatures. It serves them as a JavaScript-free HTML dashboard, JSON, plain text that reads well at 80 columns, and Prometheus metrics. It has no dependencies to install and no config file. It listens on loopback by default, and aims to stay under 20 MB of memory and 1% of one core.
 
-> **Status: first light.** It runs and serves the host group (uptime, boot time, load, OS and kernel) CPU usage (total and per core, with the P/E split on Apple Silicon), and memory and swap (with wired, compressed, and memory pressure on macOS) as JSON on macOS and Linux. The other groups report `"not implemented yet"` in `errors` (and log it once a minute) until they land, one reviewed pull request at a time. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: first light.** It runs and serves the host group (uptime, boot time, load, OS and kernel) CPU usage (total and per core, with the P/E split on Apple Silicon), memory and swap (with wired, compressed, and memory pressure on macOS), per-interface network totals and rates, and per-mount disk usage with each mount's device read and write rates, as JSON on macOS and Linux. Linux temperatures report `"not implemented yet"` in `errors` (and log it once a minute) until they land, one reviewed pull request at a time. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Running it
 

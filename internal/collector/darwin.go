@@ -4,6 +4,8 @@ package collector
 
 /*
 #cgo LDFLAGS: -framework IOKit -framework CoreFoundation
+#include <stdlib.h>
+#include <sys/mount.h>
 #include "darwin_shim.h"
 */
 import "C"
@@ -14,7 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
+	"unsafe"
 )
 
 type darwin struct {
@@ -27,6 +31,7 @@ type darwin struct {
 	// sampler goroutine calls Collect.
 	load   [C.VITALS_MAX_CPUS]C.struct_vitals_cpu_load
 	ifaces [C.VITALS_MAX_IFACES]C.struct_vitals_iface
+	mounts [C.VITALS_MAX_MOUNTS]C.struct_vitals_mount
 	opts   Options
 }
 
@@ -65,7 +70,7 @@ func (d *darwin) Static() HostInfo { return d.info }
 // Temperatures are absent on darwin in v1 (they need private API), so temps
 // is simply empty rather than an error.
 func (d *darwin) Collect(ctx context.Context) (Raw, error) {
-	raw := Raw{Errors: pending(GroupDisks)}
+	raw := Raw{Errors: map[string]error{}}
 	var h C.struct_vitals_host
 	switch C.vitals_host(&h) {
 	case 0:
@@ -93,7 +98,45 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	if raw.Network, err = d.network(); err != nil {
 		raw.Errors[GroupNetwork] = err
 	}
+	if raw.Disks, err = d.disks(); err != nil {
+		raw.Errors[GroupDisks] = err
+	}
 	return raw, nil
+}
+
+func (d *darwin) disks() ([]Disk, error) {
+	n := int(C.vitals_mounts(&d.mounts[0], C.VITALS_MAX_MOUNTS))
+	switch {
+	case n < 0:
+		return nil, errors.New("getfsstat failed")
+	case n > C.VITALS_MAX_MOUNTS:
+		return nil, fmt.Errorf("getfsstat listed %d mounts, more than the shim's %d", n, C.VITALS_MAX_MOUNTS)
+	}
+	ms := make([]fsMount, n)
+	for i := range ms {
+		m := &d.mounts[i]
+		// getfsstat(MNT_NOWAIT) gives cached sizes, so local filesystems are
+		// asked again. Network ones keep the cached figures, because statfs on
+		// a share whose server has gone away can block the sampler for minutes.
+		if m.flags&C.MNT_LOCAL != 0 {
+			C.vitals_statfs(m)
+		}
+		ms[i] = fsMount{Mount: C.GoString(&m.mount[0]), Device: C.GoString(&m.device[0]), FS: C.GoString(&m.fs[0]),
+			Bsize: uint32(m.bsize), Blocks: uint64(m.blocks), Bavail: uint64(m.bavail)}
+	}
+	ds := disksFromStatfs(ms, d.opts.DiskExclude)
+	for i := range ds {
+		bsd, ok := strings.CutPrefix(ds[i].Device, "/dev/")
+		if !ok {
+			continue
+		}
+		name := C.CString(bsd)
+		var io C.struct_vitals_disk_io
+		rc := int(C.vitals_disk_io(name, &io))
+		C.free(unsafe.Pointer(name))
+		ds[i].IO = diskIOFromShim(rc, C.GoString(&io.device[0]), uint64(io.read_bytes), uint64(io.write_bytes))
+	}
+	return ds, nil
 }
 
 func (d *darwin) network() ([]Interface, error) {

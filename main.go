@@ -44,8 +44,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	listen := fs.String("listen", "127.0.0.1:9110", "bind `address`; anything but loopback exposes the dashboard, which has no authentication")
 	interval := fs.Duration("interval", 2*time.Second, "sample interval, at least 1s")
 	history := fs.Duration("history", 15*time.Minute, "how much history to hold in memory; at least one -interval")
-	// Empty means the built-in list. -disk-exclude is validated now and used
-	// once the disk collector lands (M6).
+	// Empty means the built-in list.
 	diskExclude := fs.String("disk-exclude", "", "`regex` of mount points or fs types to skip; replaces the built-in list")
 	netExclude := fs.String("net-exclude", "", "`regex` of interface names to skip; replaces the built-in list")
 	logLevel := fs.String("log-level", "info", "log `level`: debug, info, warn, or error")
@@ -80,9 +79,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	var opts collector.Options
+	var opts collector.Options // validated above
+	if *diskExclude != "" {
+		opts.DiskExclude = regexp.MustCompile(*diskExclude)
+	}
 	if *netExclude != "" {
-		opts.NetExclude = regexp.MustCompile(*netExclude) // validated above
+		opts.NetExclude = regexp.MustCompile(*netExclude)
 	}
 
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
