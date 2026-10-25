@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -153,13 +155,21 @@ func TestDashboard(t *testing.T) {
 	store, _ := sampled(t)
 	h := New(store, Options{})
 
-	t.Run("/ is the HTML dashboard with PLAN's Content-Security-Policy, exactly", func(t *testing.T) {
+	t.Run("/ is the HTML dashboard with PLAN's Content-Security-Policy, allowing only its own script", func(t *testing.T) {
 		r := get(t, h, "/")
 		if r.status != 200 || r.header.Get("Content-Type") != "text/html; charset=utf-8" {
 			t.Fatalf("got %d %q", r.status, r.header.Get("Content-Type"))
 		}
-		if got := r.header.Get("Content-Security-Policy"); got != "default-src 'none'; style-src 'unsafe-inline'; img-src data:" {
-			t.Errorf("Content-Security-Policy = %q", got)
+		// The script source is computed here from the page itself, so this
+		// fails if what's served and what the header allows ever drift apart.
+		start, end := strings.Index(r.body, "<script>"), strings.Index(r.body, "</script>")
+		if start < 0 || end < start {
+			t.Fatal("the page has no script")
+		}
+		sum := sha256.Sum256([]byte(r.body[start+len("<script>") : end]))
+		want := "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+		if got := r.header.Get("Content-Security-Policy"); got != want {
+			t.Errorf("Content-Security-Policy = %q\nwant %q", got, want)
 		}
 		if !strings.HasPrefix(r.body, "<!doctype html>") || !strings.Contains(r.body, "<h1><a href=\"/\">mini</a></h1>") {
 			t.Errorf("not the dashboard:\n%s", r.body)

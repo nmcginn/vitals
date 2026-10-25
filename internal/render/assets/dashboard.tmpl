@@ -9,6 +9,7 @@
 {{- end}}
 <title>{{.S.Host.Hostname}} · vitals</title>
 <style>{{.Style}}</style>
+<script>{{.Script}}</script>
 </head>
 <body>
 <header>
@@ -119,7 +120,7 @@
 {{- end}}
 </main>
 <footer>
-<p>{{if .Refresh}}Refreshes every {{.Refresh}}s{{else}}Refresh paused{{end}} · <a href="{{.Toggle}}">{{.ToggleLabel}}</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a></p>
+<p>{{if .Refresh}}Refreshes every {{.Refresh}}s{{else}}Refresh paused{{end}} · <a href="{{.Toggle}}">{{.ToggleLabel}}</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a> <button type="button" id="theme" hidden>Theme: auto</button></p>
 </footer>
 </body>
 </html>

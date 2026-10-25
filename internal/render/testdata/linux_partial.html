@@ -22,8 +22,10 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
+/* Dark when the system asks for it, unless the toggle chose light; or when
+   the toggle chose dark. The toggle sets data-theme (decision 34). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111315;
     --card: #1b1e21;
     --text: #e6e8eb;
@@ -38,6 +40,22 @@
     --error-bg: #3a1c1a;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111315;
+  --card: #1b1e21;
+  --text: #e6e8eb;
+  --muted: #9aa1aa;
+  --line: #2d3136;
+  --track: #2d3136;
+  --accent: #6ea8ff;
+  --accent2: #f0a35e;
+  --warn: #e0a030;
+  --crit: #ff6b5e;
+  --ok: #5cc87a;
+  --error-bg: #3a1c1a;
+}
+:root[data-theme="light"] { color-scheme: light; }
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -128,7 +146,52 @@ td.used .bar { display: block; width: auto; margin: .2rem 0; }
 tbody th small { overflow-wrap: normal; word-break: normal; }
 .r { text-align: right; }
 td.r { white-space: nowrap; }
+#theme {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* An inline-block keeps the button's underline off the separator. */
+#theme::before { content: "·\a0"; display: inline-block; color: var(--muted); }
 </style>
+<script>// The theme toggle (decision 34). The page works without this: it follows
+// the system's colour scheme, and the toggle stays hidden. Runs in <head> so
+// a stored theme applies before the first paint on every refresh.
+(function () {
+  var root = document.documentElement;
+  var modes = ["auto", "light", "dark"];
+  var mode = "auto";
+  try {
+    mode = localStorage.getItem("vitals-theme") || "auto";
+  } catch (e) {} // storage blocked: the toggle still works until reload
+  if (modes.indexOf(mode) < 0) mode = "auto";
+
+  function apply() {
+    if (mode === "auto") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", mode);
+    var button = document.getElementById("theme");
+    if (button) button.textContent = "Theme: " + mode;
+  }
+  apply();
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var button = document.getElementById("theme");
+    button.hidden = false;
+    apply();
+    button.addEventListener("click", function () {
+      mode = modes[(modes.indexOf(mode) + 1) % modes.length];
+      try {
+        localStorage.setItem("vitals-theme", mode);
+      } catch (e) {}
+      apply();
+    });
+  });
+})();
+</script>
 </head>
 <body>
 <header>
@@ -183,7 +246,7 @@ td.r { white-space: nowrap; }
 </section>
 </main>
 <footer>
-<p>Refreshes every 2s · <a href="/?refresh=0">Pause refresh</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a></p>
+<p>Refreshes every 2s · <a href="/?refresh=0">Pause refresh</a> · <a href="/api/v1/stats?pretty=1">JSON</a> · <a href="/api/v1/history?pretty=1">History</a> <button type="button" id="theme" hidden>Theme: auto</button></p>
 </footer>
 </body>
 </html>

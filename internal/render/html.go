@@ -2,7 +2,9 @@ package render
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"math"
@@ -14,7 +16,7 @@ import (
 	"github.com/nmcginn/vitals/internal/sampler"
 )
 
-//go:embed assets/dashboard.tmpl assets/style.css
+//go:embed assets/dashboard.tmpl assets/style.css assets/theme.js
 var assets embed.FS
 
 var dashboardTmpl = template.Must(template.New("dashboard.tmpl").Funcs(template.FuncMap{
@@ -32,14 +34,28 @@ var dashboardTmpl = template.Must(template.New("dashboard.tmpl").Funcs(template.
 // nbsp keeps a figure and its unit on one line when a narrow table wraps.
 func nbsp(s string) string { return strings.ReplaceAll(s, " ", " ") }
 
-// style is inlined into every page, so a page load is one response.
-var style = func() template.CSS {
-	b, err := assets.ReadFile("assets/style.css")
-	if err != nil {
-		panic(err)
-	}
-	return template.CSS(b)
+// style and script are inlined into every page, so a page load is one
+// response.
+var (
+	style  = template.CSS(asset("assets/style.css"))
+	script = template.JS(asset("assets/theme.js"))
+)
+
+// ScriptHash is the CSP source that allows the page's one inline script and
+// nothing else (decision 34). It is the hash of the exact bytes between the
+// <script> tags, which html/template writes unchanged for a template.JS value.
+var ScriptHash = func() string {
+	sum := sha256.Sum256([]byte(script))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
 }()
+
+func asset(name string) string {
+	b, err := assets.ReadFile(name)
+	if err != nil {
+		panic(err) // embedded at build time, so only a bad name gets here
+	}
+	return string(b)
+}
 
 // Page is what the request adds to the snapshot: the ?refresh= it asked for.
 type Page struct {
@@ -57,6 +73,7 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 	v := dashboard{
 		S:      s,
 		Style:  style,
+		Script: script,
 		System: system(s.Host),
 		Uptime: "—",
 		Window: window(history),
@@ -97,6 +114,7 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 type dashboard struct {
 	S           *sampler.Snapshot
 	Style       template.CSS
+	Script      template.JS
 	Refresh     int    // the meta refresh in seconds; 0 for none
 	Self        string // this page, carrying ?refresh= when the request set it
 	Toggle      string // this page with the refresh paused, or resumed

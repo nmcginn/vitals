@@ -1,6 +1,8 @@
 package render
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"regexp"
 	"strings"
@@ -81,9 +83,12 @@ func TestHTMLProperties(t *testing.T) {
 	pages["the 450-sample page"] = mustHTML(t, s, historyOf(s, 450), Page{})
 
 	for name, page := range pages {
-		t.Run(name+" has no script, no event handlers, and no external URLs", func(t *testing.T) {
-			if strings.Contains(strings.ToLower(page), "<script") {
-				t.Error("page contains <script")
+		t.Run(name+" has one script, the embedded theme script, no event handlers, and no external URLs", func(t *testing.T) {
+			if n := strings.Count(strings.ToLower(page), "<script"); n != 1 {
+				t.Errorf("page has %d scripts, want 1", n)
+			}
+			if !strings.Contains(page, "<script>"+string(script)+"</script>") {
+				t.Error("the script on the page differs from assets/theme.js, so its hash won't match the CSP")
 			}
 			if m := eventAttr.FindString(page); m != "" {
 				t.Errorf("page has an event attribute: %q", m)
@@ -196,7 +201,7 @@ func TestHTMLContent(t *testing.T) {
 		s := darwinFull()
 		s.Host.Hostname = `<script>alert("x")</script>`
 		page := mustHTML(t, s, nil, Page{})
-		if strings.Contains(page, "<script") || !strings.Contains(page, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
+		if strings.Contains(page, "<script>alert") || !strings.Contains(page, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
 			t.Errorf("hostname not escaped:\n%s", page[:min(len(page), 400)])
 		}
 	})
@@ -258,6 +263,53 @@ func TestHTMLContent(t *testing.T) {
 			if !strings.Contains(page, want) {
 				t.Errorf("page lacks %q", want)
 			}
+		}
+	})
+}
+
+func TestHTMLTheme(t *testing.T) {
+	page := mustHTML(t, darwinFull(), nil, Page{})
+
+	t.Run("without JavaScript the toggle stays hidden and the page follows the system", func(t *testing.T) {
+		if !strings.Contains(page, `<button type="button" id="theme" hidden>`) {
+			t.Error("the toggle isn't hidden in the markup")
+		}
+		if !strings.Contains(page, "<html lang=\"en\">\n") {
+			t.Error("the markup sets a theme on <html>; only the script may")
+		}
+		if !strings.Contains(page, "@media (prefers-color-scheme: dark)") {
+			t.Error("no system dark mode")
+		}
+	})
+
+	t.Run("the stylesheet honours a chosen light or dark theme over the system's", func(t *testing.T) {
+		for _, want := range []string{
+			`:root:not([data-theme="light"])`, // system dark, unless light was chosen
+			`:root[data-theme="dark"] {`,
+			`:root[data-theme="light"] { color-scheme: light; }`,
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("stylesheet lacks %s", want)
+			}
+		}
+	})
+
+	t.Run("the script makes no network requests and touches only its own storage key", func(t *testing.T) {
+		js := string(script)
+		for _, banned := range []string{"fetch", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "import", "src", "http", "cookie", "eval", "innerHTML"} {
+			if strings.Contains(js, banned) {
+				t.Errorf("theme.js uses %q", banned)
+			}
+		}
+		if strings.Count(js, "localStorage") != 2 || strings.Count(js, `"vitals-theme"`) != 2 {
+			t.Error("theme.js should read and write only the vitals-theme key")
+		}
+	})
+
+	t.Run("ScriptHash is the CSP source for the script's exact bytes", func(t *testing.T) {
+		sum := sha256.Sum256([]byte(script))
+		if want := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; ScriptHash != want {
+			t.Errorf("ScriptHash = %s, want %s", ScriptHash, want)
 		}
 	})
 }

@@ -1,6 +1,6 @@
 # Homelab System Monitor — Specification
 
-*Spec date: Oct 21, 2026. Committed verbatim from the original, except that the author byline is dropped and the embedded diagram, which did not survive export, is redrawn below as text from the surrounding description.*
+*Spec date: Oct 21, 2026. Committed verbatim from the original, except that the author byline is dropped and the embedded diagram, which did not survive export, is redrawn below as text from the surrounding description. Later changes by the maintainer are marked *Amended* with their decision number.*
 
 ## Overview and goals
 
@@ -12,7 +12,7 @@ Goals, in priority order:
 2. **Single binary, no installed dependencies.** On macOS the binary links only what ships with the OS (`libSystem`, IOKit, CoreFoundation). It is built on a Mac with cgo enabled for darwin. Linux builds use `CGO_ENABLED=0` and are fully static. No config files and no external assets.
 3. **Lightweight.** Targets at a 2s sample interval: under 20 MB RSS and under 1% of one core at idle. Serving a request never triggers metric collection.
 4. **Read-only.** No endpoint changes state on the host or in the process.
-5. **No JavaScript required.** The dashboard is fully functional with JS disabled.
+5. **Minimal JavaScript, graceful fallback.** The dashboard is fully functional with JS disabled. A small inline script may add conveniences on top, such as a theme toggle, and never fetches anything. *Amended: decision 34.*
 6. **Small and readable.** Roughly 1,000–1,200 lines of Go plus a small C shim for darwin. Standard library only; no third-party Go modules.
 
 ## Non-goals
@@ -119,7 +119,7 @@ Prometheus metric names use the `vitals_` prefix with base units, for example `v
 
 ## Dashboard
 
-The dashboard is one server-rendered HTML page, built with `html/template`, under 50 KB, with no JavaScript and no external requests.
+The dashboard is one server-rendered HTML page, built with `html/template`, under 50 KB, with no external requests. Any JavaScript is minimal, inline, and optional: everything works without it. *Amended: decision 34.*
 
 - **Layout, top to bottom:** a header line (hostname, OS/kernel, uptime, sampled-at time), then cards for CPU, memory, disks, network, and temperatures (omitted when there are none). Single column on narrow screens, a two-column grid from about 900px.
 - **Sparklines:** inline SVG generated server-side from the ring buffer. Show a CPU total line, a memory used line, and a combined rx/tx line per network interface. Use a fixed `viewBox`, no axes, and label the current value as text beside the line.
@@ -147,7 +147,7 @@ Security requirements:
 - **Loopback by default.** If `-listen` resolves to a non-loopback address, log one `warn` line at startup saying the dashboard is reachable from the network and has no authentication.
 - **Unprivileged.** Must run correctly as a normal user on both platforms. Never require root.
 - **Hardened server:** set `ReadHeaderTimeout` 5s, `ReadTimeout` 10s, `WriteTimeout` 10s, `IdleTimeout` 60s, `MaxHeaderBytes` 16 KB. Ignore request bodies.
-- **Response headers:** `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and on HTML `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`.
+- **Response headers:** `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and on HTML `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-…'`, where the hash is that of the page's one inline script. *Amended: decision 34.*
 - **No secrets** in output: no environment variables, command lines, or usernames.
 - **Graceful shutdown** on `SIGINT` and `SIGTERM`: stop the sampler, then `Server.Shutdown` with a 5s deadline.
 

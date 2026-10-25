@@ -21,11 +21,12 @@ const (
 	typeHTML = "text/html; charset=utf-8"
 	typeJSON = "application/json; charset=utf-8"
 	typeText = "text/plain; charset=utf-8"
-
-	// csp is PLAN's policy for HTML: inline styles and data: images, nothing
-	// else, so a page can't run script or reach the network.
-	csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
 )
+
+// csp is PLAN's policy for HTML: inline styles, data: images, and the one
+// inline script whose hash render publishes (decision 34). Nothing else runs,
+// and nothing reaches the network.
+var csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src " + render.ScriptHash
 
 // New returns the handler for every route. Method patterns make ServeMux
 // answer anything but GET and HEAD with 405 and "Allow: GET, HEAD".
