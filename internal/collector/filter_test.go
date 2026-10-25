@@ -84,6 +84,12 @@ func TestKeepDisks(t *testing.T) {
 		{Mount: "/System/Volumes/Data", Device: "/dev/disk3s5", FS: "apfs"},
 		{Mount: "/System/Volumes/Update/mnt1", Device: "/dev/disk3s1", FS: "apfs"},
 		{Mount: "/private/var/folders/x", Device: "/private/var/folders/y", FS: "nullfs"},
+		{Mount: "/mnt/home", Device: "nas:/export/home", FS: "nfs"},
+		{Mount: "/mnt/media", Device: "nas:/media", FS: "nfs4"},
+		{Mount: "/mnt/share", Device: "//nas/share", FS: "cifs"},
+		{Mount: "/mnt/smb", Device: "//nas/smb", FS: "smb3"},
+		{Mount: "/mnt/remote", Device: "user@host:/", FS: "fuse.sshfs"},
+		{Mount: "/mnt/host", Device: "hostshare", FS: "9p"},
 	} {
 		t.Run("the default list excludes "+d.Mount+" ("+d.FS+")", func(t *testing.T) {
 			if got := keepDisks([]Disk{d}, nil); len(got) != 0 {
@@ -93,7 +99,9 @@ func TestKeepDisks(t *testing.T) {
 	}
 
 	// "/System/VolumesX" and "/snapshots" check that the mount patterns are
-	// anchored prefixes of a whole path segment.
+	// anchored prefixes of a whole path segment. "/mnt/nfs" checks that the
+	// network types match the fs type, not a mount point that mentions one, and
+	// smbfs stays because darwin lists shares from the kernel's cache.
 	for _, d := range []Disk{
 		{Mount: "/", Device: "/dev/disk3s1s1", FS: "apfs"},
 		{Mount: "/", Device: "/dev/nvme0n1p2", FS: "ext4"},
@@ -101,6 +109,7 @@ func TestKeepDisks(t *testing.T) {
 		{Mount: "/boot/efi", Device: "/dev/nvme0n1p1", FS: "vfat"},
 		{Mount: "/mnt/nas", Device: "//nas/share", FS: "smbfs"},
 		{Mount: "/srv", Device: "rpool/srv", FS: "zfs"},
+		{Mount: "/mnt/nfs", Device: "/dev/sdb1", FS: "ext4"},
 		{Mount: "/System/VolumesX", Device: "/dev/disk6s1", FS: "apfs"},
 		{Mount: "/snapshots", Device: "/dev/sdc1", FS: "btrfs"},
 	} {

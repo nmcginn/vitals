@@ -77,7 +77,7 @@ Collection rules:
 
 - **Rates come from deltas** between consecutive samples, divided by actual elapsed time, not the configured interval. The first sample has no rates. JSON reports them as `null`, and the dashboard shows "—".
 - **Units in machine formats are raw:** bytes, bytes/s, seconds, percentages as floats 0 to 100, and temperatures in °C. Only the HTML and text renderers humanize, with binary units (KiB, MiB, GiB).
-- **Default filters:** skip pseudo filesystems (`proc`, `sysfs`, `tmpfs`, `devtmpfs`, `overlay`, `squashfs`, `cgroup*`, etc.) and snap mounts. Skip the interfaces `lo`, `lo0`, `veth*`, `docker*`, `br-*`, `utun*`, `awdl*`, `llw*`, `bridge*`, and `anpi*`. The `-disk-exclude` and `-net-exclude` regex flags replace these lists.
+- **Default filters:** skip pseudo filesystems (`proc`, `sysfs`, `tmpfs`, `devtmpfs`, `overlay`, `squashfs`, `cgroup*`, etc.) and snap mounts, and network filesystems (`nfs`, `nfs4`, `cifs`, `smb3`, `fuse.sshfs`, `9p`), whose `statfs` can hang the sampler when the server is gone (decision 30). Skip the interfaces `lo`, `lo0`, `veth*`, `docker*`, `br-*`, `utun*`, `awdl*`, `llw*`, `bridge*`, and `anpi*`. The `-disk-exclude` and `-net-exclude` regex flags replace these lists.
 - **Partial failure is normal.** If one group fails, log it at most once per minute, record that group's error in the snapshot's `errors` map, and still serve every other group.
 
 Platform details the spec leaves open:
@@ -243,7 +243,7 @@ This follows the spec's layout. It adds three untagged files (`darwin_conv.go`, 
 - **The macOS CI runner is a VM.** It may report one performance level, no memory pressure changes, or virtual block devices without IOKit statistics. The darwin integration test asserts invariants, not specific values, so it holds in a VM. The real-hardware checks (Activity Monitor agreement, the P/E split, the 4 GiB rollover) are the maintainer's acceptance items. M2 and M3 find out first.
 - **The Activity Monitor memory formula** is not documented by Apple (see the darwin "used" memory assumption above). The maintainer's check after M4 finds out.
 - **Mapping mounts to physical devices on darwin** (APFS container → physical store) may need more IORegistry walking than a small shim wants. M6 finds out. The fallback is `null` rates for unmapped mounts, never a guess.
-- **The 1,000 to 1,200 line budget** is tight for six groups on two platforms, plus four renderers. Keep an eye on it from M3, and report the count in each PR.
+- **The 1,000 to 1,200 line figure** was an initial estimate, and v1 will pass it (decision 29). It is not a budget: report the count in each PR so growth stays visible, but don't trade readability for lines.
 - **staticcheck lags new Go releases.** If the pinned staticcheck can't load Go 1.27 code, M0 finds out, and the fix is raising the staticcheck pin, not lowering Go.
 
 ## Milestones

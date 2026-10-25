@@ -14,16 +14,15 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M6 (disks) in review.
+- Current: the line-count and network-mount decisions (29, 30) in review.
 - Next up: M7.
-- Open PRs waiting on review: the M6 disks PR.
+- Open PRs waiting on review: the maintainer-decisions PR.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **The line budget.** After M6, non-test Go is 1,768 lines (plus a 452-line shim and header), against the spec's "roughly 1,000 to 1,200" for all of v1. One group (Linux temperatures) and three renderers remain; at the pace so far (about 250 lines a group) v1 lands well past 2,000. Options: (a) treat the figure as a guide and keep reporting the count; (b) set a new ceiling (say 2,000); (c) hold 1,200 and cut scope or density to fit. Recommendation: (a) or (b), because the code is not padded, and fitting 1,200 means denser code, against priority 5. Blocks nothing yet; it decides how hard M6 onwards should squeeze.
-- **A hung network mount on Linux.** `statfs` on an NFS or CIFS mount whose server has gone away can block for minutes (forever with NFS `hard`), and the sampler can't interrupt a syscall, so every group would go stale. Darwin avoids it by refreshing only local mounts (decision 28); Linux has no cached figures to fall back on. Options: (a) add the network types (`nfs`, `nfs4`, `cifs`, `smb3`, `fuse.sshfs`, `9p`) to the default exclude list, so `-disk-exclude` brings them back for those who want them; (b) run each network mount's statfs in a goroutine with a timeout and skip it while one is outstanding; (c) accept it. Recommendation: (a), the smallest and plainest fix, though it changes PLAN's list. Blocks nothing.
+None right now.
 
 ---
 
@@ -87,7 +86,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M3: CPU.** Total and per-core usage on both platforms, the model name, and the darwin P/E split from `IODeviceTree:/cpus` checked against `hw.perflevel` (decisions 20, 21).
 - **M4: Memory.** Memory and swap on both platforms, with darwin's Activity Monitor formula, wired, compressed, active, inactive, file-backed, and pressure (decisions 22, 23).
 - **M5: Network.** Per-interface totals and rates on both platforms, darwin from `IFMIB_IFDATA` for true 64-bit counters, and the default interface list with `-net-exclude` in `filter.go` (decisions 24, 25).
-- **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28).
+- **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28). *Decided* after M6: network filesystems join the default exclude list (decision 30).
 
 ---
 
