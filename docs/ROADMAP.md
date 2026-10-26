@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M9, Prometheus `/metrics`, in review.
-- Next up: M10 (needs M9 merged), then M11.
-- Open PRs waiting on review: M9.
+- Current: M10, content negotiation and the text renderer, in review.
+- Next up: M11 (needs only M2, so it can start while M10 is in review), then M12 (needs M10).
+- Open PRs waiting on review: M10.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ---
 
 ## Open
-
-### M10: Content negotiation and the text renderer
-
-- [ ] **`/` and `/api/v1/stats` speak HTML, JSON, text, and Prometheus, as the client asks.**
-  *Needs:* M8, M9.
-  A pure `negotiate(query, accept, default) (format, error)` in `internal/server`, and `render/text.go` (aligned columns, binary units, readable at 80 columns). Both negotiable endpoints accept all four formats. Every negotiated response sets `Vary: Accept`. The dashboard's footer gains a `Text` link to `/?format=text` (decision 32).
-
-  *Acceptance:* a table-driven negotiation test covers: `?format=` beating `Accept`; each of the four format values; `?format=xml` → 406 listing the supported types; `Accept: application/json` → JSON; `Accept: text/html;q=0.5, application/json;q=0.9` → JSON; `q=0` excluding a type; `*/*` and a missing header → the endpoint default; `text/*` → text or HTML per q and order; `text/plain; version=0.0.4` → Prometheus while bare `text/plain` → text; `application/openmetrics-text` → Prometheus; `Accept: image/png` → 406; and `image/png, */*;q=0.1` → default. `405` still wins over negotiation for `POST`. A text golden file comes from a full snapshot, and a test asserts that no line exceeds 80 columns, even with a 60-character mount point (truncated with `…`, not wrapped). The first-sample text shows "—" for rates. *(maintainer)* `curl localhost:9110/?format=text` reads well in a terminal.
 
 ### M11: Packaging and the README
 
@@ -66,6 +58,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M7: Linux temperatures.** hwmon sensors labelled from `temp*_label` or `<chip>/temp<N>`, unique labels by suffix, unreadable sensors skipped, `"temps": null` with no sensors (decision 31).
 - **M8: Dashboard.** `/` renders `render.HTML` from the latest snapshot and history: cards per group with errors in place, SVG sparklines of at most 120 peak points, disk and network tables, meta refresh with `?refresh=`, light and dark with a remembered theme toggle, collapsible cards that stay closed across refreshes, and a CSP that allows only that script's hash (decisions 32, 33, 34).
 - **M9: Prometheus.** `render.Prom` at `/metrics` in exposition format 0.0.4 with PLAN's names plus `vitals_host_info`, disk rates once per physical device, unknowns omitted, an in-repo grammar test, and the footer's `Metrics` link (decision 35).
+- **M10: Negotiation and text.** `negotiate` in `internal/server` (`?format=`, then `Accept` by q and specificity, then the default; `406` listing the formats; `Vary: Accept`) on `/` and `/api/v1/stats`, `render.Text` at 80 columns with names cut by `…` and errors wrapped, and the footer's `Text` link (decisions 36, 37).
 
 ---
 

@@ -38,9 +38,9 @@ func New(store *sampler.Store, opts Options) http.Handler {
 		s.log = slog.New(slog.DiscardHandler)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.dashboard)
+	mux.HandleFunc("GET /{$}", s.negotiated(formatHTML))
 	mux.HandleFunc("GET /healthz", s.healthz)
-	mux.HandleFunc("GET /api/v1/stats", s.stats)
+	mux.HandleFunc("GET /api/v1/stats", s.negotiated(formatJSON))
 	mux.HandleFunc("GET /api/v1/history", s.history)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,15 +67,39 @@ func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, typeText, []byte("ok\n"))
 }
 
-func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
-	snap := s.store.Latest()
-	if snap == nil {
-		write(w, http.StatusServiceUnavailable, typeText, []byte("no sample yet\n"))
-		return
+// negotiated serves the latest snapshot in whichever format the request asks
+// for, with def when it doesn't say. / and /api/v1/stats differ only in def
+// (PLAN), so /?format=json is the stats JSON and /api/v1/stats?format=html is
+// the dashboard.
+func (s *server) negotiated(def format) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// On the 406 and the 503 too: a cache must not hand either to a client
+		// that asked differently.
+		w.Header().Set("Vary", "Accept")
+		f, err := negotiate(r.URL.Query().Get("format"), r.Header.Get("Accept"), def)
+		if err != nil {
+			write(w, http.StatusNotAcceptable, typeText, []byte(err.Error()+"\n"))
+			return
+		}
+		snap := s.store.Latest()
+		if snap == nil {
+			write(w, http.StatusServiceUnavailable, typeText, []byte("no sample yet\n"))
+			return
+		}
+		switch f {
+		case formatHTML:
+			b, err := render.HTML(snap, s.store.History(), page(r))
+			w.Header().Set("Content-Security-Policy", csp)
+			s.respond(w, typeHTML, b, err)
+		case formatJSON:
+			b, err := render.JSON(snap, pretty(r))
+			s.respond(w, typeJSON, b, err)
+		case formatText:
+			write(w, http.StatusOK, typeText, render.Text(snap))
+		case formatProm:
+			write(w, http.StatusOK, typeProm, render.Prom(snap, s.build))
+		}
 	}
-	b, err := render.HTML(snap, s.store.History(), page(r))
-	w.Header().Set("Content-Security-Policy", csp)
-	s.respond(w, typeHTML, b, err)
 }
 
 // page reads ?refresh=. Anything but a whole number of seconds, 0 or more, is
@@ -83,16 +107,6 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
 func page(r *http.Request) render.Page {
 	n, err := strconv.Atoi(r.URL.Query().Get("refresh"))
 	return render.Page{Refresh: n, RefreshSet: err == nil && n >= 0}
-}
-
-func (s *server) stats(w http.ResponseWriter, r *http.Request) {
-	snap := s.store.Latest()
-	if snap == nil {
-		write(w, http.StatusServiceUnavailable, typeText, []byte("no sample yet\n"))
-		return
-	}
-	b, err := render.JSON(snap, pretty(r))
-	s.respond(w, typeJSON, b, err)
 }
 
 // metrics answers 503 before the first sample, like the other snapshot
