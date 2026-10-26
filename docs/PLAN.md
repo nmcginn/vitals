@@ -152,6 +152,7 @@ Metric names use the `vitals_` prefix with base units, and the exposition is wri
 - `vitals_network_{receive,transmit}_{bytes,packets}_per_second{iface}` and `vitals_network_{receive,transmit}_bytes_total{iface}` (counters)
 - `vitals_temperature_celsius{sensor}`, `vitals_load_average{period="1m|5m|15m"}`, `vitals_uptime_seconds`, `vitals_boot_time_seconds`
 - `vitals_collector_error{group}` (0 or 1), and `vitals_build_info{version,commit}` set to 1
+- As built in M9 (decision 35): also `vitals_host_info{hostname,os,os_version,kernel,arch}` set to 1, and the disk rates' `device` is the physical device, written once per device
 
 A rate that is unknown on this sample is omitted, because Prometheus has no null. Ratios run 0 to 1, not 0 to 100.
 

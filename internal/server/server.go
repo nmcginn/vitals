@@ -14,13 +14,15 @@ import (
 )
 
 type Options struct {
-	Log *slog.Logger // where render failures go
+	Log   *slog.Logger // where render failures go
+	Build render.Build // reported by /metrics as vitals_build_info
 }
 
 const (
 	typeHTML = "text/html; charset=utf-8"
 	typeJSON = "application/json; charset=utf-8"
 	typeText = "text/plain; charset=utf-8"
+	typeProm = "text/plain; version=0.0.4; charset=utf-8"
 )
 
 // csp is PLAN's policy for HTML: inline styles, data: images, and the one
@@ -31,7 +33,7 @@ var csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-
 // New returns the handler for every route. Method patterns make ServeMux
 // answer anything but GET and HEAD with 405 and "Allow: GET, HEAD".
 func New(store *sampler.Store, opts Options) http.Handler {
-	s := &server{store: store, log: opts.Log}
+	s := &server{store: store, log: opts.Log, build: opts.Build}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -40,6 +42,7 @@ func New(store *sampler.Store, opts Options) http.Handler {
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /api/v1/stats", s.stats)
 	mux.HandleFunc("GET /api/v1/history", s.history)
+	mux.HandleFunc("GET /metrics", s.metrics)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// On every response, errors and 404s included.
 		h := w.Header()
@@ -53,6 +56,7 @@ func New(store *sampler.Store, opts Options) http.Handler {
 type server struct {
 	store *sampler.Store
 	log   *slog.Logger
+	build render.Build
 }
 
 func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +93,18 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := render.JSON(snap, pretty(r))
 	s.respond(w, typeJSON, b, err)
+}
+
+// metrics answers 503 before the first sample, like the other snapshot
+// endpoints, so the scrape fails and Prometheus records up=0 rather than a
+// sample with no metrics in it.
+func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
+	snap := s.store.Latest()
+	if snap == nil {
+		write(w, http.StatusServiceUnavailable, typeText, []byte("no sample yet\n"))
+		return
+	}
+	write(w, http.StatusOK, typeProm, render.Prom(snap, s.build))
 }
 
 // history serves the ring buffer, oldest first. ?since=<unix seconds> keeps

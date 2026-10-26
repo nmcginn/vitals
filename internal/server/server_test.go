@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nmcginn/vitals/internal/collector"
+	"github.com/nmcginn/vitals/internal/render"
 	"github.com/nmcginn/vitals/internal/sampler"
 )
 
@@ -81,7 +84,7 @@ func get(t *testing.T, h http.Handler, target string) response {
 	return do(t, h, http.MethodGet, target, nil)
 }
 
-var routes = []string{"/", "/healthz", "/api/v1/stats", "/api/v1/history"}
+var routes = []string{"/", "/healthz", "/api/v1/stats", "/api/v1/history", "/metrics"}
 
 func TestHealthz(t *testing.T) {
 	t.Run("503 no sample yet before the first sample", func(t *testing.T) {
@@ -144,6 +147,41 @@ func TestStats(t *testing.T) {
 	})
 }
 
+func TestMetrics(t *testing.T) {
+	t.Run("503 before the first sample, so the scrape fails", func(t *testing.T) {
+		r := get(t, New(sampler.NewStore(10), Options{}), "/metrics")
+		if r.status != 503 || r.body != "no sample yet\n" {
+			t.Errorf("got %d %q", r.status, r.body)
+		}
+	})
+
+	store, _ := sampled(t)
+	h := New(store, Options{Build: render.Build{Version: "v1.2.3", Commit: "abc1234"}})
+
+	t.Run("the latest snapshot in exposition format 0.0.4", func(t *testing.T) {
+		r := get(t, h, "/metrics")
+		if r.status != 200 || r.header.Get("Content-Type") != "text/plain; version=0.0.4; charset=utf-8" {
+			t.Fatalf("got %d %q", r.status, r.header.Get("Content-Type"))
+		}
+		for _, want := range []string{
+			`vitals_build_info{version="v1.2.3",commit="abc1234"} 1`,
+			`vitals_host_info{hostname="mini",`,
+			"vitals_uptime_seconds 42\n",
+		} {
+			if !strings.Contains(r.body, want) {
+				t.Errorf("body lacks %q:\n%s", want, r.body)
+			}
+		}
+	})
+
+	t.Run("does not negotiate: ?format= is ignored", func(t *testing.T) {
+		r := do(t, h, http.MethodGet, "/metrics?format=json", nil)
+		if r.header.Get("Content-Type") != typeProm {
+			t.Errorf("Content-Type = %q", r.header.Get("Content-Type"))
+		}
+	})
+}
+
 func TestDashboard(t *testing.T) {
 	t.Run("503 before the first sample", func(t *testing.T) {
 		r := get(t, New(sampler.NewStore(10), Options{}), "/")
@@ -173,6 +211,19 @@ func TestDashboard(t *testing.T) {
 		}
 		if !strings.HasPrefix(r.body, "<!doctype html>") || !strings.Contains(r.body, "<h1><a href=\"/\">mini</a></h1>") {
 			t.Errorf("not the dashboard:\n%s", r.body)
+		}
+	})
+
+	t.Run("every link on the dashboard answers 200", func(t *testing.T) {
+		links := regexp.MustCompile(`href="(/[^"]*)"`).FindAllStringSubmatch(get(t, h, "/").body, -1)
+		if len(links) == 0 {
+			t.Fatal("the dashboard has no links")
+		}
+		for _, l := range links {
+			target := html.UnescapeString(l[1])
+			if r := get(t, h, target); r.status != 200 {
+				t.Errorf("%s is %d", target, r.status)
+			}
 		}
 	})
 
@@ -325,6 +376,7 @@ func TestMethodsAndHeaders(t *testing.T) {
 		"trailing /":  get(t, h, "/healthz/"),
 		"history 200": get(t, h, "/api/v1/history"),
 		"dashboard":   get(t, h, "/"),
+		"metrics":     get(t, h, "/metrics"),
 	}
 	for name, r := range cases {
 		t.Run(name+" responses carry no-store, nosniff, no-referrer, and a utf-8 Content-Type", func(t *testing.T) {

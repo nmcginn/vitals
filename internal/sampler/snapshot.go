@@ -53,6 +53,10 @@ type Disk struct {
 	UsedPct    *float64 `json:"used_pct"`
 	ReadBps    *float64 `json:"read_bps"`
 	WriteBps   *float64 `json:"write_bps"`
+	// IODevice names the physical device the rates come from (decision 7),
+	// "" when the mount has none. Prometheus labels rates with it; JSON
+	// reports rates per mount and leaves it out.
+	IODevice string `json:"-"`
 }
 
 type Interface struct {
@@ -120,6 +124,7 @@ func build(info collector.HostInfo, prev *collector.Raw, cur collector.Raw, elap
 				out.UsedPct = ptr(float64(out.UsedBytes) / float64(d.TotalBytes) * 100)
 			}
 			if d.IO != nil {
+				out.IODevice = d.IO.Device
 				if p := prevIO[d.IO.Device]; p != nil {
 					out.ReadBps = rate(p.ReadBytes, d.IO.ReadBytes, secs)
 					out.WriteBps = rate(p.WriteBytes, d.IO.WriteBytes, secs)

@@ -19,6 +19,7 @@ curl localhost:9110/api/v1/stats?pretty=1
 | `/` | the dashboard: collapsible cards and a light/dark/auto toggle, both remembered if JavaScript is on, fully usable without it; reloads every sample (`?refresh=N` seconds, `?refresh=0` to stop); `503` before the first sample |
 | `/api/v1/stats` | the latest sample as JSON (`?pretty=1` to indent); `503` before the first sample |
 | `/api/v1/history` | every buffered sample, oldest first; `?since=<unix seconds>` keeps those taken after it |
+| `/metrics` | the latest sample for a Prometheus scrape (exposition format 0.0.4, `vitals_` names, ratios 0 to 1); `503` before the first sample |
 | `/healthz` | `ok` once the first sample exists, `503 no sample yet` before |
 
 Flags: `-listen` (default `127.0.0.1:9110`), `-interval` (`2s`, at least `1s`), `-history` (`15m`), `-disk-exclude` and `-net-exclude` (regexes that replace the built-in lists), `-log-level` (`debug`, `info`, `warn`, `error`), and `-version`. A bad value exits with status 2. There is no authentication: binding anything but loopback logs a warning.

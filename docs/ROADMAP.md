@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M8, the dashboard, in review.
-- Next up: M9.
-- Open PRs waiting on review: M8.
+- Current: M9, Prometheus `/metrics`, in review.
+- Next up: M10 (needs M9 merged), then M11.
+- Open PRs waiting on review: M9.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ---
 
 ## Open
-
-### M9: Prometheus `/metrics`
-
-- [ ] **A scrape target Prometheus accepts.**
-  *Needs:* M2.
-  `render/prom.go`, a hand-written exposition format 0.0.4 per PLAN's naming, served at `/metrics` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`. The dashboard's footer gains a `Metrics` link (decision 32).
-
-  *Acceptance:* a golden file from a fixed full snapshot includes the four metric names the spec fixes, exactly. An in-repo grammar test (decision 8) checks every family: `# HELP` and `# TYPE` precede its samples, names match `[a-zA-Z_:][a-zA-Z0-9_:]*`, no family appears twice, there are no duplicate label sets, label values escape `\`, `"`, and newlines, and there are no `NaN` values unless intended. Unknown rates are omitted (the first-sample golden file has no `_per_second` samples). Ratios are within 0 to 1. A mount point and hostname with quotes and backslashes are escaped correctly. *(maintainer)* `promtool check metrics` accepts a live scrape.
 
 ### M10: Content negotiation and the text renderer
 
@@ -73,6 +65,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M6: Disks.** Per-mount usage on both platforms (free is `f_bavail`), each mount's device I/O from `/proc/diskstats` via `/sys/block` and from the IORegistry's `IOBlockStorageDriver`, the default mount list with one mount per device, and `-disk-exclude` (decisions 26, 27, 28). *Decided* after M6: network filesystems join the default exclude list (decision 30).
 - **M7: Linux temperatures.** hwmon sensors labelled from `temp*_label` or `<chip>/temp<N>`, unique labels by suffix, unreadable sensors skipped, `"temps": null` with no sensors (decision 31).
 - **M8: Dashboard.** `/` renders `render.HTML` from the latest snapshot and history: cards per group with errors in place, SVG sparklines of at most 120 peak points, disk and network tables, meta refresh with `?refresh=`, light and dark with a remembered theme toggle, collapsible cards that stay closed across refreshes, and a CSP that allows only that script's hash (decisions 32, 33, 34).
+- **M9: Prometheus.** `render.Prom` at `/metrics` in exposition format 0.0.4 with PLAN's names plus `vitals_host_info`, disk rates once per physical device, unknowns omitted, an in-repo grammar test, and the footer's `Metrics` link (decision 35).
 
 ---
 

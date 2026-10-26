@@ -1,0 +1,87 @@
+# HELP vitals_build_info Always 1; the labels name the running build.
+# TYPE vitals_build_info gauge
+vitals_build_info{version="v1.0.0",commit="abc1234"} 1
+# HELP vitals_host_info Always 1; the labels describe the host.
+# TYPE vitals_host_info gauge
+vitals_host_info{hostname="mini",os="darwin",os_version="26.1",kernel="25.1.0",arch="arm64"} 1
+# HELP vitals_uptime_seconds Seconds since boot.
+# TYPE vitals_uptime_seconds gauge
+vitals_uptime_seconds 864000
+# HELP vitals_boot_time_seconds Boot time as Unix seconds.
+# TYPE vitals_boot_time_seconds gauge
+vitals_boot_time_seconds 1791727326
+# HELP vitals_load_average Load average over the period.
+# TYPE vitals_load_average gauge
+vitals_load_average{period="1m"} 0.41
+vitals_load_average{period="5m"} 0.38
+vitals_load_average{period="15m"} 0.35
+# HELP vitals_cpu_core_info Always 1; kind is P for a performance core, E for an efficiency core.
+# TYPE vitals_cpu_core_info gauge
+vitals_cpu_core_info{cpu="0",kind="P"} 1
+vitals_cpu_core_info{cpu="1",kind="P"} 1
+vitals_cpu_core_info{cpu="2",kind="P"} 1
+vitals_cpu_core_info{cpu="3",kind="P"} 1
+vitals_cpu_core_info{cpu="4",kind="E"} 1
+vitals_cpu_core_info{cpu="5",kind="E"} 1
+vitals_cpu_core_info{cpu="6",kind="E"} 1
+vitals_cpu_core_info{cpu="7",kind="E"} 1
+vitals_cpu_core_info{cpu="8",kind="E"} 1
+vitals_cpu_core_info{cpu="9",kind="E"} 1
+# HELP vitals_memory_total_bytes Physical memory.
+# TYPE vitals_memory_total_bytes gauge
+vitals_memory_total_bytes 17179869184
+# HELP vitals_memory_available_bytes Memory available to start new work without swapping.
+# TYPE vitals_memory_available_bytes gauge
+vitals_memory_available_bytes 7516192768
+# HELP vitals_memory_used_bytes Memory in use; on darwin, Activity Monitor's Memory Used.
+# TYPE vitals_memory_used_bytes gauge
+vitals_memory_used_bytes 9663676416
+# HELP vitals_memory_wired_bytes Wired memory, which can't be paged out.
+# TYPE vitals_memory_wired_bytes gauge
+vitals_memory_wired_bytes 2147483648
+# HELP vitals_memory_compressed_bytes Memory held by the compressor.
+# TYPE vitals_memory_compressed_bytes gauge
+vitals_memory_compressed_bytes 536870912
+# HELP vitals_memory_active_bytes Active memory.
+# TYPE vitals_memory_active_bytes gauge
+vitals_memory_active_bytes 4294967296
+# HELP vitals_memory_inactive_bytes Inactive memory.
+# TYPE vitals_memory_inactive_bytes gauge
+vitals_memory_inactive_bytes 3221225472
+# HELP vitals_memory_file_backed_bytes File-backed (cached) memory.
+# TYPE vitals_memory_file_backed_bytes gauge
+vitals_memory_file_backed_bytes 2684354560
+# HELP vitals_memory_pressure 1 for the current memory pressure level, 0 for the others.
+# TYPE vitals_memory_pressure gauge
+vitals_memory_pressure{level="normal"} 1
+vitals_memory_pressure{level="warn"} 0
+vitals_memory_pressure{level="critical"} 0
+# HELP vitals_swap_total_bytes Swap space.
+# TYPE vitals_swap_total_bytes gauge
+vitals_swap_total_bytes 0
+# HELP vitals_swap_used_bytes Swap space in use.
+# TYPE vitals_swap_used_bytes gauge
+vitals_swap_used_bytes 0
+# HELP vitals_filesystem_size_bytes Filesystem size.
+# TYPE vitals_filesystem_size_bytes gauge
+vitals_filesystem_size_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 494384795648
+# HELP vitals_filesystem_used_bytes Filesystem space in use.
+# TYPE vitals_filesystem_used_bytes gauge
+vitals_filesystem_used_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 120259084288
+# HELP vitals_filesystem_free_bytes Filesystem space an unprivileged user can still write.
+# TYPE vitals_filesystem_free_bytes gauge
+vitals_filesystem_free_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 374125711360
+# HELP vitals_network_receive_bytes_total Bytes received since the interface came up.
+# TYPE vitals_network_receive_bytes_total counter
+vitals_network_receive_bytes_total{iface="en0"} 98234111
+# HELP vitals_network_transmit_bytes_total Bytes sent since the interface came up.
+# TYPE vitals_network_transmit_bytes_total counter
+vitals_network_transmit_bytes_total{iface="en0"} 12001221
+# HELP vitals_collector_error 1 when the group failed on this sample, 0 otherwise.
+# TYPE vitals_collector_error gauge
+vitals_collector_error{group="host"} 0
+vitals_collector_error{group="cpu"} 0
+vitals_collector_error{group="memory"} 0
+vitals_collector_error{group="disks"} 0
+vitals_collector_error{group="network"} 0
+vitals_collector_error{group="temps"} 0

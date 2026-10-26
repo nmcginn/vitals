@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nmcginn/vitals/internal/collector"
+	"github.com/nmcginn/vitals/internal/render"
 	"github.com/nmcginn/vitals/internal/sampler"
 	"github.com/nmcginn/vitals/internal/server"
 )
@@ -105,7 +106,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	go func() { s.Run(sctx); close(sampled) }()
 
 	srv := &http.Server{
-		Handler:           server.New(store, server.Options{Log: log}),
+		Handler:           server.New(store, server.Options{Log: log, Build: render.Build{Version: version, Commit: commit}}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
