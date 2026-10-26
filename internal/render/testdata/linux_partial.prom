@@ -1,0 +1,69 @@
+# HELP vitals_build_info Always 1; the labels name the running build.
+# TYPE vitals_build_info gauge
+vitals_build_info{version="v1.0.0",commit="abc1234"} 1
+# HELP vitals_host_info Always 1; the labels describe the host.
+# TYPE vitals_host_info gauge
+vitals_host_info{hostname="box<\"&\">",os="linux",os_version="Debian GNU/Linux 13 (trixie)",kernel="6.12.48-amd64",arch="amd64"} 1
+# HELP vitals_uptime_seconds Seconds since boot.
+# TYPE vitals_uptime_seconds gauge
+vitals_uptime_seconds 4384926
+# HELP vitals_boot_time_seconds Boot time as Unix seconds.
+# TYPE vitals_boot_time_seconds gauge
+vitals_boot_time_seconds 1788249600
+# HELP vitals_load_average Load average over the period.
+# TYPE vitals_load_average gauge
+vitals_load_average{period="1m"} 1.5
+vitals_load_average{period="5m"} 0.75
+vitals_load_average{period="15m"} 0.25
+# HELP vitals_cpu_usage_ratio Busy share of CPU time since the last sample, 0 to 1; cpu="total" is every core together.
+# TYPE vitals_cpu_usage_ratio gauge
+vitals_cpu_usage_ratio{cpu="total"} 1
+vitals_cpu_usage_ratio{cpu="0"} 1
+# HELP vitals_memory_total_bytes Physical memory.
+# TYPE vitals_memory_total_bytes gauge
+vitals_memory_total_bytes 8221089792
+# HELP vitals_memory_available_bytes Memory available to start new work without swapping.
+# TYPE vitals_memory_available_bytes gauge
+vitals_memory_available_bytes 5368709120
+# HELP vitals_memory_used_bytes Memory in use; on darwin, Activity Monitor's Memory Used.
+# TYPE vitals_memory_used_bytes gauge
+vitals_memory_used_bytes 2852380672
+# HELP vitals_swap_total_bytes Swap space.
+# TYPE vitals_swap_total_bytes gauge
+vitals_swap_total_bytes 0
+# HELP vitals_swap_used_bytes Swap space in use.
+# TYPE vitals_swap_used_bytes gauge
+vitals_swap_used_bytes 0
+# HELP vitals_filesystem_size_bytes Filesystem size.
+# TYPE vitals_filesystem_size_bytes gauge
+vitals_filesystem_size_bytes{mount="/",device="/dev/nvme0n1p2",fs="ext4"} 250790436864
+vitals_filesystem_size_bytes{mount="/srv/media library/archive",device="nas:/export",fs="nfs4"} 4000787030016
+vitals_filesystem_size_bytes{mount="/mnt/empty",device="/dev/loop9",fs="ext4"} 0
+# HELP vitals_filesystem_used_bytes Filesystem space in use.
+# TYPE vitals_filesystem_used_bytes gauge
+vitals_filesystem_used_bytes{mount="/",device="/dev/nvme0n1p2",fs="ext4"} 50158087372
+vitals_filesystem_used_bytes{mount="/srv/media library/archive",device="nas:/export",fs="nfs4"} 3000590272512
+vitals_filesystem_used_bytes{mount="/mnt/empty",device="/dev/loop9",fs="ext4"} 0
+# HELP vitals_filesystem_free_bytes Filesystem space an unprivileged user can still write.
+# TYPE vitals_filesystem_free_bytes gauge
+vitals_filesystem_free_bytes{mount="/",device="/dev/nvme0n1p2",fs="ext4"} 200632349492
+vitals_filesystem_free_bytes{mount="/srv/media library/archive",device="nas:/export",fs="nfs4"} 1000196757504
+vitals_filesystem_free_bytes{mount="/mnt/empty",device="/dev/loop9",fs="ext4"} 0
+# HELP vitals_disk_read_bytes_per_second Bytes read per second from the physical device.
+# TYPE vitals_disk_read_bytes_per_second gauge
+vitals_disk_read_bytes_per_second{device="nvme0n1"} 1536
+# HELP vitals_disk_written_bytes_per_second Bytes written per second to the physical device.
+# TYPE vitals_disk_written_bytes_per_second gauge
+vitals_disk_written_bytes_per_second{device="nvme0n1"} 204800.5
+# HELP vitals_temperature_celsius Sensor temperature in degrees Celsius.
+# TYPE vitals_temperature_celsius gauge
+vitals_temperature_celsius{sensor="Package id 0"} 48
+vitals_temperature_celsius{sensor="nvme/temp1"} 39.85
+# HELP vitals_collector_error 1 when the group failed on this sample, 0 otherwise.
+# TYPE vitals_collector_error gauge
+vitals_collector_error{group="host"} 0
+vitals_collector_error{group="cpu"} 0
+vitals_collector_error{group="memory"} 0
+vitals_collector_error{group="disks"} 0
+vitals_collector_error{group="network"} 1
+vitals_collector_error{group="temps"} 0

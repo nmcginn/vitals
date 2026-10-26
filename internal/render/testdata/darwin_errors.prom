@@ -1,0 +1,58 @@
+# HELP vitals_build_info Always 1; the labels name the running build.
+# TYPE vitals_build_info gauge
+vitals_build_info{version="v1.0.0",commit="abc1234"} 1
+# HELP vitals_host_info Always 1; the labels describe the host.
+# TYPE vitals_host_info gauge
+vitals_host_info{hostname="mini",os="darwin",os_version="26.1",kernel="25.1.0",arch="arm64"} 1
+# HELP vitals_uptime_seconds Seconds since boot.
+# TYPE vitals_uptime_seconds gauge
+vitals_uptime_seconds 864000
+# HELP vitals_boot_time_seconds Boot time as Unix seconds.
+# TYPE vitals_boot_time_seconds gauge
+vitals_boot_time_seconds 1791727326
+# HELP vitals_load_average Load average over the period.
+# TYPE vitals_load_average gauge
+vitals_load_average{period="1m"} 0.41
+vitals_load_average{period="5m"} 0.38
+vitals_load_average{period="15m"} 0.35
+# HELP vitals_filesystem_size_bytes Filesystem size.
+# TYPE vitals_filesystem_size_bytes gauge
+vitals_filesystem_size_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 494384795648
+# HELP vitals_filesystem_used_bytes Filesystem space in use.
+# TYPE vitals_filesystem_used_bytes gauge
+vitals_filesystem_used_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 120259084288
+# HELP vitals_filesystem_free_bytes Filesystem space an unprivileged user can still write.
+# TYPE vitals_filesystem_free_bytes gauge
+vitals_filesystem_free_bytes{mount="/",device="/dev/disk3s1",fs="apfs"} 374125711360
+# HELP vitals_disk_read_bytes_per_second Bytes read per second from the physical device.
+# TYPE vitals_disk_read_bytes_per_second gauge
+vitals_disk_read_bytes_per_second{device="disk0"} 0
+# HELP vitals_disk_written_bytes_per_second Bytes written per second to the physical device.
+# TYPE vitals_disk_written_bytes_per_second gauge
+vitals_disk_written_bytes_per_second{device="disk0"} 40960
+# HELP vitals_network_receive_bytes_per_second Bytes received per second.
+# TYPE vitals_network_receive_bytes_per_second gauge
+vitals_network_receive_bytes_per_second{iface="en0"} 12800
+# HELP vitals_network_transmit_bytes_per_second Bytes sent per second.
+# TYPE vitals_network_transmit_bytes_per_second gauge
+vitals_network_transmit_bytes_per_second{iface="en0"} 3400
+# HELP vitals_network_receive_packets_per_second Packets received per second.
+# TYPE vitals_network_receive_packets_per_second gauge
+vitals_network_receive_packets_per_second{iface="en0"} 21
+# HELP vitals_network_transmit_packets_per_second Packets sent per second.
+# TYPE vitals_network_transmit_packets_per_second gauge
+vitals_network_transmit_packets_per_second{iface="en0"} 14
+# HELP vitals_network_receive_bytes_total Bytes received since the interface came up.
+# TYPE vitals_network_receive_bytes_total counter
+vitals_network_receive_bytes_total{iface="en0"} 98234111
+# HELP vitals_network_transmit_bytes_total Bytes sent since the interface came up.
+# TYPE vitals_network_transmit_bytes_total counter
+vitals_network_transmit_bytes_total{iface="en0"} 12001221
+# HELP vitals_collector_error 1 when the group failed on this sample, 0 otherwise.
+# TYPE vitals_collector_error gauge
+vitals_collector_error{group="host"} 0
+vitals_collector_error{group="cpu"} 1
+vitals_collector_error{group="memory"} 1
+vitals_collector_error{group="disks"} 1
+vitals_collector_error{group="network"} 0
+vitals_collector_error{group="temps"} 0

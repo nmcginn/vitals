@@ -44,7 +44,7 @@ func darwinFull() *sampler.Snapshot {
 		Disks: []sampler.Disk{{
 			Mount: "/", Device: "/dev/disk3s1", FS: "apfs",
 			TotalBytes: 494384795648, UsedBytes: 120259084288, FreeBytes: 374125711360,
-			UsedPct: p(24.3), ReadBps: p(0.0), WriteBps: p(40960.0),
+			UsedPct: p(24.3), ReadBps: p(0.0), WriteBps: p(40960.0), IODevice: "disk0",
 		}},
 		Network: []sampler.Interface{{
 			Name: "en0", RxBps: p(12800.0), TxBps: p(3400.0), RxPps: p(21.0), TxPps: p(14.0),
@@ -87,7 +87,7 @@ func linuxPartial() *sampler.Snapshot {
 			{
 				Mount: "/", Device: "/dev/nvme0n1p2", FS: "ext4",
 				TotalBytes: 250790436864, UsedBytes: 50158087372, FreeBytes: 200632349492,
-				UsedPct: p(20.0), ReadBps: p(1536.0), WriteBps: p(204800.5),
+				UsedPct: p(20.0), ReadBps: p(1536.0), WriteBps: p(204800.5), IODevice: "nvme0n1",
 			},
 			{
 				Mount: "/srv/media library/archive", Device: "nas:/export", FS: "nfs4",

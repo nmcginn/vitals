@@ -302,8 +302,14 @@ func TestGauges(t *testing.T) {
 		s.tick(ctx)
 		*now = now.Add(2 * time.Second)
 		s.tick(ctx)
-		if d := store.Latest().Disks[0]; d.ReadBps != nil || d.WriteBps != nil {
-			t.Errorf("read_bps = %s, write_bps = %s, want null", f64(d.ReadBps), f64(d.WriteBps))
+		if d := store.Latest().Disks[0]; d.ReadBps != nil || d.WriteBps != nil || d.IODevice != "" {
+			t.Errorf("read_bps = %s, write_bps = %s, io device = %q, want null, null, none", f64(d.ReadBps), f64(d.WriteBps), d.IODevice)
+		}
+	})
+
+	t.Run("a mount carries the name of the physical device its rates come from", func(t *testing.T) {
+		if got := one(full(1)).Disks[0].IODevice; got != "disk0" {
+			t.Errorf("io device = %q, want disk0, the device behind /dev/disk3s1", got)
 		}
 	})
 
