@@ -1,0 +1,18 @@
+mini · macOS 26.1 · Darwin 25.1.0 · arm64
+up 10d 0h · load 0.41 0.38 0.35 · sampled 2026-10-21 14:02:06 UTC
+
+CPU 6.2% · Apple M4 · 10 cores (4 P + 6 E)
+  P0   9.1%   P1   4.0%   P2  12.5%   P3   7.0%   E4   3.2%   E5   2.8%
+  E6   5.5%   E7   1.0%   E8   0.0%   E9  16.0%
+
+Memory 9.0 GiB of 16.0 GiB used (56.2%)
+  available 7.0 GiB · swap none · pressure normal · wired 2.0 GiB
+  compressed 512.0 MiB · active 4.0 GiB · inactive 3.0 GiB · file-backed 2.5 GiB
+
+Disks
+  MOUNT       USED       SIZE   USE%         READ        WRITE
+  /      112.0 GiB  460.4 GiB  24.3%        0 B/s   40.0 KiB/s
+
+Network
+  IFACE      RECEIVE         SEND   RX TOTAL   TX TOTAL
+  en0     12.5 KiB/s    3.3 KiB/s   93.7 MiB   11.4 MiB

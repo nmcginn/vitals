@@ -1,0 +1,15 @@
+mini · macOS 26.1 · Darwin 25.1.0 · arm64
+up 10d 0h · load 0.41 0.38 0.35 · sampled 2026-10-21 14:02:06 UTC
+
+CPU unavailable: host_processor_info: (os/kern) failure
+
+Memory unavailable: host_statistics64: (os/kern) failure
+
+Disks
+  statfs "/Volumes/Backup": input/output error
+  MOUNT       USED       SIZE   USE%         READ        WRITE
+  /      112.0 GiB  460.4 GiB  24.3%        0 B/s   40.0 KiB/s
+
+Network
+  IFACE      RECEIVE         SEND   RX TOTAL   TX TOTAL
+  en0     12.5 KiB/s    3.3 KiB/s   93.7 MiB   11.4 MiB

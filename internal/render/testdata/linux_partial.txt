@@ -1,0 +1,20 @@
+box<"&"> · Debian GNU/Linux 13 (trixie) · Linux 6.12.48-amd64 · amd64
+up 50d 18h · load 1.50 0.75 0.25 · sampled 2026-10-21 14:02:06 UTC
+
+CPU 100.0% · Intel(R) Celeron(R) N5105 @ 2.00GHz · 1 core
+  0 100.0%
+
+Memory 2.7 GiB of 7.7 GiB used (34.7%)
+  available 5.0 GiB · swap none
+
+Disks
+  MOUNT                         USED       SIZE   USE%         READ        WRITE
+  /                         46.7 GiB  233.6 GiB  20.0%    1.5 KiB/s  200.0 KiB/s
+  /srv/media library/arc…    2.7 TiB    3.6 TiB  75.0%            —            —
+  /mnt/empty                     0 B        0 B      —            —            —
+
+Network unavailable: reading /proc/net/dev: permission denied
+
+Temperatures
+  Package id 0   48.0 °C
+  nvme/temp1     39.9 °C

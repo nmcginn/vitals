@@ -392,7 +392,7 @@ func TestHTMLRefresh(t *testing.T) {
 		page := mustHTML(t, darwinFull(), nil, Page{Refresh: 10, RefreshSet: true})
 		for _, href := range regexp.MustCompile(`href="(/[^"]*)"`).FindAllStringSubmatch(page, -1) {
 			switch u := href[1]; {
-			case strings.HasPrefix(u, "/api/"), u == "/metrics": // not the dashboard
+			case strings.HasPrefix(u, "/api/"), u == "/metrics", u == "/?format=text": // not the dashboard
 			case u == "/?refresh=10", u == "/?refresh=0":
 			default:
 				t.Errorf("dashboard link %q drops ?refresh=10", u)

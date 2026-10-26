@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -61,12 +62,18 @@ type response struct {
 
 func do(t *testing.T, h http.Handler, method, target string, body io.Reader) response {
 	t.Helper()
+	return send(t, h, method, target, body, nil)
+}
+
+func send(t *testing.T, h http.Handler, method, target string, body io.Reader, header http.Header) response {
+	t.Helper()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	req, err := http.NewRequest(method, srv.URL+target, body)
 	if err != nil {
 		t.Fatal(err)
 	}
+	maps.Copy(req.Header, header)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
