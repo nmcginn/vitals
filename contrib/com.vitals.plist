@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  A launchd user agent: vitals runs as you, never as root, from login onwards.
+  launchd doesn't expand ~ or $HOME, so install with the README's sed command,
+  which replaces __HOME__ with your home directory.
+  To reach the dashboard from your phone, add two strings after the binary:
+  <string>-listen</string> and <string>0.0.0.0:9110</string>.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.vitals</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/vitals</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>__HOME__/Library/Logs/vitals.log</string>
+	<key>StandardErrorPath</key>
+	<string>__HOME__/Library/Logs/vitals.log</string>
+</dict>
+</plist>

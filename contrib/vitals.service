@@ -1,0 +1,40 @@
+# vitals as a systemd service: an unprivileged user created per run, with a
+# read-only view of the system. Install with the README's commands.
+[Unit]
+Description=vitals, a read-only system monitor
+Documentation=https://github.com/nmcginn/vitals
+After=network.target
+
+[Service]
+# To reach it from other machines, add -listen 0.0.0.0:9110.
+ExecStart=/usr/local/bin/vitals
+Restart=on-failure
+DynamicUser=yes
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# read-only rather than yes: yes mounts an empty directory over /home, so the
+# disk card would report that instead of the real /home filesystem.
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
