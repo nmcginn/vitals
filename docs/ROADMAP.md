@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M10, content negotiation and the text renderer, in review.
-- Next up: M11 (needs only M2, so it can start while M10 is in review), then M12 (needs M10).
-- Open PRs waiting on review: M10.
+- Current: M11, packaging and the README, in review.
+- Next up: M12, the budget check (all its Needs have merged).
+- Open PRs waiting on review: M11.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 ---
 
 ## Open
-
-### M11: Packaging and the README
-
-- [ ] **Release binaries, service units, and a README that gets the Mini running in five minutes.**
-  *Needs:* M2.
-  `make build`: on Linux it produces `dist/vitals-linux-{amd64,arm64}` (`CGO_ENABLED=0`) and reports that the darwin binary needs a Mac. On a Mac it also produces `dist/vitals-darwin-arm64` (`CGO_ENABLED=1`, `MACOSX_DEPLOYMENT_TARGET` set in the Makefile). Every build uses `-trimpath -ldflags "-s -w -X main.version=… -X main.commit=… -X main.date=…"`. `contrib/com.vitals.plist` is a launchd user agent, unprivileged, with `KeepAlive`, logs to `~/Library/Logs`. `contrib/vitals.service` is a systemd unit with `DynamicUser=yes` and hardening (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`). The README covers install, launchd first, then systemd, then the flags, endpoints, and security notes.
-
-  *Acceptance:* the Linux CI job runs `make build`, and `file` reports both Linux binaries as statically linked (checked in CI). The macOS CI job runs `make build`, and a script asserts every `otool -L` entry is under `/usr/lib` or `/System/Library`. `plutil -lint` passes on the plist (macOS CI), and `systemd-analyze verify` passes on the unit where available (Linux CI). `vitals -version` from the built binary prints the injected version, commit, and date. *(maintainer)* it runs as a non-root user under the launchd plist on the Mini.
 
 ### M12: Hold the budget
 
@@ -59,6 +51,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M8: Dashboard.** `/` renders `render.HTML` from the latest snapshot and history: cards per group with errors in place, SVG sparklines of at most 120 peak points, disk and network tables, meta refresh with `?refresh=`, light and dark with a remembered theme toggle, collapsible cards that stay closed across refreshes, and a CSP that allows only that script's hash (decisions 32, 33, 34).
 - **M9: Prometheus.** `render.Prom` at `/metrics` in exposition format 0.0.4 with PLAN's names plus `vitals_host_info`, disk rates once per physical device, unknowns omitted, an in-repo grammar test, and the footer's `Metrics` link (decision 35).
 - **M10: Negotiation and text.** `negotiate` in `internal/server` (`?format=`, then `Accept` by q and specificity, then the default; `406` listing the formats; `Vary: Accept`) on `/` and `/api/v1/stats`, `render.Text` at 80 columns with names cut by `…` and errors wrapped, and the footer's `Text` link (decisions 36, 37).
+- **M11: Packaging.** `make build` (darwin only on a Mac, `MACOSX_DEPLOYMENT_TARGET=13.0`), `dist-check` in `make check` (static Linux binaries, `otool -L`, `plutil -lint`, `systemd-analyze verify`, `-version`), `contrib/com.vitals.plist` and `contrib/vitals.service`, and the README's install and security notes (decisions 38, 39).
 
 ---
 

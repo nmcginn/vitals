@@ -2,7 +2,7 @@
 
 ## Shape
 
-*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host, CPU, memory, network, disks, and temperatures), `filter.go` (disks and interfaces), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/`, `/healthz`, `/api/v1/stats`, `/api/v1/history`, `/metrics`) and `negotiate.go`, `render/json.go` (`JSON`, `History`), `render/prom.go` (`Prom`), `render/text.go` (`Text`), and `render/html.go`, `sparkline.go`, and `assets/` (the dashboard). Not yet: `contrib/`. Update in every PR that adds, moves, or removes a module.*
+*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h`, `darwin_conv.go`, `linux.go`, `procfs.go` (host, CPU, memory, network, disks, and temperatures), `filter.go` (disks and interfaces), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/`, `/healthz`, `/api/v1/stats`, `/api/v1/history`, `/metrics`) and `negotiate.go`, `render/json.go` (`JSON`, `History`), `render/prom.go` (`Prom`), `render/text.go` (`Text`), and `render/html.go`, `sparkline.go`, and `assets/` (the dashboard), and `contrib/` (`com.vitals.plist`, `vitals.service`). Everything in the shape below is built. Update in every PR that adds, moves, or removes a module.*
 
 The complete JSON shape is fixed by the golden file [`internal/render/testdata/darwin_full.json`](../internal/render/testdata/darwin_full.json) (decision 13).
 
