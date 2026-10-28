@@ -17,7 +17,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dat
 # release and warns about anything newer.
 export MACOSX_DEPLOYMENT_TARGET := 13.0
 
-.PHONY: help run fmt-check vet staticcheck test shim-check golden build-linux build-darwin build dist-check check
+.PHONY: help run fmt-check vet staticcheck test budget soak shim-check golden build-linux build-darwin build dist-check check
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*## /\t/'
@@ -38,6 +38,16 @@ staticcheck: ## staticcheck, pinned
 
 test: ## Tests with the race detector
 	go test -race ./...
+
+# The allocation tests skip themselves under -race, where sync.Pool drops items
+# at random and the counts measure the detector, so they run again without it.
+budget: ## Allocation and growth tests, without the race detector
+	go test -count=1 -run 'Allocations|DoesNotGrow' ./...
+
+SOAK_MINUTES ?= 5
+
+soak: ## Run at the defaults for SOAK_MINUTES (5), reporting RSS and CPU against the budget
+	contrib/soak.sh $(SOAK_MINUTES)
 
 # The shim gets its own clang pass because cgo compiles its generated C with the
 # same CFLAGS, and that code fails -Werror. The warnings are listed rather than
@@ -98,4 +108,4 @@ dist-check: build ## Check the release binaries and contrib/ files
 	out=$$($$native -version); echo "$$native -version: $$out"; \
 	case "$$out" in *"$(VERSION)"*"$(COMMIT)"*"$(DATE)"*) ;; *) echo "$$native -version doesn't report $(VERSION), $(COMMIT), and $(DATE)"; exit 1;; esac
 
-check: fmt-check vet staticcheck test shim-check dist-check ## Everything CI runs
+check: fmt-check vet staticcheck test budget shim-check dist-check ## Everything CI runs

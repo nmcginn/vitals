@@ -89,13 +89,12 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 		v.Toggle, v.ToggleLabel = "/", "Resume refresh"
 	}
 
-	cpu := downsample(cpuSeries(history))
+	cpu := cpuSeries(history)
 	v.CPUSpark = spark{Path: sparkPath(cpu, 100), Title: v.title("CPU usage", "now "+humanPct(cpuNow(s)))}
-	mem := downsample(memSeries(history))
+	mem := memSeries(history)
 	v.MemSpark = spark{Path: sparkPath(mem, 100), Title: v.title("Memory used", "now "+humanPct(memPct(s.Memory)))}
 	for _, n := range s.Network {
 		rx, tx := netSeries(history, n.Name)
-		rx, tx = downsample(rx), downsample(tx)
 		top := peak(rx, tx) // one scale, so rx and tx compare at a glance
 		v.NetSparks = append(v.NetSparks, netSpark{
 			Rx:    sparkPath(rx, top),
@@ -208,43 +207,52 @@ func cpuNow(s *sampler.Snapshot) *float64 {
 
 // memPct is used memory as a percentage of total, nil when unknown.
 func memPct(m *collector.Memory) *float64 {
-	if m == nil || m.TotalBytes == 0 {
-		return nil
+	if pct := memUsedPct(m); !math.IsNaN(pct) {
+		return &pct
 	}
-	pct := float64(m.UsedBytes) / float64(m.TotalBytes) * 100
-	return &pct
+	return nil
 }
 
-func cpuSeries(h []*sampler.Snapshot) series {
-	out := make(series, len(h))
-	for i, s := range h {
-		out[i] = known(cpuNow(s))
+// memUsedPct is memPct as a value, NaN when unknown, so a sparkline can read
+// every sample without allocating a pointer for each.
+func memUsedPct(m *collector.Memory) float64 {
+	if m == nil || m.TotalBytes == 0 {
+		return math.NaN()
 	}
-	return out
+	return float64(m.UsedBytes) / float64(m.TotalBytes) * 100
+}
+
+// The series functions draw history (oldest first) as at most sparkPoints
+// values each.
+
+func cpuSeries(h []*sampler.Snapshot) series {
+	return downsample(len(h), func(i int) float64 { return known(cpuNow(h[i])) })
 }
 
 func memSeries(h []*sampler.Snapshot) series {
-	out := make(series, len(h))
-	for i, s := range h {
-		out[i] = known(memPct(s.Memory))
-	}
-	return out
+	return downsample(len(h), func(i int) float64 { return memUsedPct(h[i].Memory) })
 }
 
 // netSeries is one interface's rx and tx rates. A snapshot without the
 // interface (it appeared later, or the group failed) is a gap.
 func netSeries(h []*sampler.Snapshot, name string) (rx, tx series) {
-	rx, tx = make(series, len(h)), make(series, len(h))
-	for i, s := range h {
-		rx[i], tx[i] = math.NaN(), math.NaN()
-		for _, n := range s.Network {
-			if n.Name == name {
-				rx[i], tx[i] = known(n.RxBps), known(n.TxBps)
-				break
+	rx = downsample(len(h), func(i int) float64 { return known(netRate(h[i], name, false)) })
+	tx = downsample(len(h), func(i int) float64 { return known(netRate(h[i], name, true)) })
+	return rx, tx
+}
+
+// netRate is the named interface's rx or tx rate in s, nil when s doesn't
+// list it.
+func netRate(s *sampler.Snapshot, name string, tx bool) *float64 {
+	for _, n := range s.Network {
+		if n.Name == name {
+			if tx {
+				return n.TxBps
 			}
+			return n.RxBps
 		}
 	}
-	return rx, tx
+	return nil
 }
 
 func known(v *float64) float64 {
