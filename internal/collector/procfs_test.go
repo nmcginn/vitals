@@ -805,3 +805,17 @@ func TestProcfsCPUModel(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkProcfsCollect is the collect step of the per-tick path, over the
+// 8-core fixture. The fixture is on disk, so it measures file reads as well as
+// parsing, much as /proc would.
+func BenchmarkProcfsCollect(b *testing.B) {
+	p := newProcfs(os.DirFS("testdata/x86-8core"), fakeStatfs(nil), Options{})
+	ctx := context.Background()
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := p.Collect(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

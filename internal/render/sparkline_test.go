@@ -108,11 +108,16 @@ func TestSparkPath(t *testing.T) {
 	})
 }
 
+// downsampleOf downsamples a series held in a slice.
+func downsampleOf(s series) series {
+	return downsample(len(s), func(i int) float64 { return s[i] })
+}
+
 func TestDownsample(t *testing.T) {
 	t.Run("a short history is drawn point for point", func(t *testing.T) {
 		s := series{1, 2, 3}
-		if got := downsample(s); len(got) != 3 {
-			t.Errorf("len = %d, want 3", len(got))
+		if got := downsampleOf(s); len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != 3 {
+			t.Errorf("got %v, want [1 2 3]", got)
 		}
 	})
 
@@ -121,7 +126,7 @@ func TestDownsample(t *testing.T) {
 		for i := range s {
 			s[i] = float64(i % 2 * 10) // 0, 10, 0, 10, …
 		}
-		got := downsample(s)
+		got := downsampleOf(s)
 		if len(got) != sparkPoints {
 			t.Fatalf("len = %d, want %d", len(got), sparkPoints)
 		}
@@ -135,7 +140,7 @@ func TestDownsample(t *testing.T) {
 	t.Run("a single-sample spike keeps its full height", func(t *testing.T) {
 		s := make(series, 450)
 		s[200] = 100 // one 2s spike in 15 minutes of idle
-		if got := peak(downsample(s)); got != 100 {
+		if got := peak(downsampleOf(s)); got != 100 {
 			t.Errorf("tallest point = %v, want 100", got)
 		}
 	})
@@ -147,7 +152,7 @@ func TestDownsample(t *testing.T) {
 		}
 		s[0], s[1] = nan, nan // bucket 0
 		s[2] = nan            // half of bucket 1
-		got := downsample(s)
+		got := downsampleOf(s)
 		if !math.IsNaN(got[0]) || got[1] != 50 {
 			t.Errorf("buckets 0 and 1 = %v, %v; want NaN and 50", got[0], got[1])
 		}

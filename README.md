@@ -83,6 +83,8 @@ make check     # everything CI runs; run before pushing
 make shim-check  # on a Mac: lint, analyze, and sanitize the C shim (part of check)
 make golden    # regenerate renderer golden files; review the diff
 make build     # release binaries into dist/ (the macOS one only on a Mac)
+make budget    # allocation and growth tests without -race (part of check)
+make soak      # run at the defaults for 5 minutes (SOAK_MINUTES=60 for longer); report RSS and CPU
 ```
 
 These need Go 1.27, pinned in `go.mod` (with `GOTOOLCHAIN=auto`, the default, any recent Go fetches it). `make check` also builds the release binaries and checks them: the Linux ones are static, the macOS one links only system libraries, the launchd and systemd files lint, and `-version` reports what was built.
