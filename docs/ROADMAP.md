@@ -14,21 +14,51 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: M12, the budget check, in review. With it, every milestone in PLAN has landed.
-- Next up: nothing scheduled. The maintainer's one-hour soak on the Mini, and the open question below, are what's left of v1.
-- Open PRs waiting on review: M12.
+- Current: v1 is built; M0 to M12 have all merged. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
+- Next up: M13, then the v1.1 sensors (M14 to M16).
+- Open PRs waiting on review: the roadmap update that schedules M13 to M16.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-- **Should the defaults hide interfaces that have never moved a byte?** (Blocks nothing; decision 25 deferred it to "once the dashboard shows how noisy that is".) On an M5 MacBook Air the dashboard's network card lists eight interfaces, and seven of them (`gif0`, `stf0`, `en1` to `en4`, `ap1`) read 0 B/s with 0 B total, so `en0` sits at the bottom of a phone-length list. Options: (a) keep PLAN's list as is; (b) add `gif.*`, `stf.*`, and `ap.*` to the default exclude list, which leaves the Thunderbolt `en1` to `en4`; (c) leave the list alone and have the renderers skip interfaces whose rx and tx totals are both 0, so a port shows up the moment it is used. Recommendation: (c), since it needs no guessing at names and also covers Linux's idle bridges, but it hides something JSON still shows, which is the maintainer's call. Lands in `filter.go` for (b), or in every renderer for (c).
+None.
 
 ---
 
 ## Open
 
-Nothing is scheduled. Every milestone in PLAN has landed; the maintainer moves an idea below into here to schedule more.
+### M13: Hide idle interfaces on the dashboard and in text
+
+- [ ] **An interface that has never moved a byte doesn't take up a row on the phone.**
+  *Needs:* M8, M10.
+  Per decision 41: the HTML and text renderers skip an interface whose `RxBytes` and `TxBytes` are both 0. JSON and Prometheus are unchanged. One shared helper in `internal/render` decides, so the two renderers can't disagree.
+
+  *Acceptance:* table-driven tests cover an idle interface (absent from HTML and text, present in JSON and Prometheus); one byte received, and separately one byte sent (shown); and every interface idle (the card and text say "No interfaces to show.", as when every interface is filtered out). Goldens include an idle interface. The first sample, when rates are null and totals aren't, hides by totals alone. *(maintainer)* the Mini's network card shows only the ports in use.
+
+### M14: GPU utilisation on darwin (v1.1)
+
+- [ ] **The dashboard shows how busy the GPU is, from public IOKit.**
+  *Needs:* M3.
+  The `Device Utilization %` gauge from the `PerformanceStatistics` dictionary of the `IOAccelerator` registry entry, read through the shim with public IOKit calls (decision 44 prefers a public route). It's darwin-only, so it lives in a `"darwin"` sub-object in JSON (the convention) and is omitted on Linux. A new `gpu` group gets its own entry in `errors` and in `vitals_collector_error`. It appears on the dashboard, in text, and in Prometheus as a 0 to 1 ratio. Record the JSON and metric names in a decision.
+
+  *Acceptance:* untagged conversion tests from captured dictionaries: a normal reading, a missing key (`null`, never 0), a value outside 0 to 100 (`null`), and no accelerator at all (group error, other groups served). Goldens for all four formats with and without the field. The darwin integration test accepts a value from 0 to 100 or no accelerator, since the CI VM may have none. `make budget` still passes with any new allocations counted. If the property turns out to be missing or meaningless on current macOS, stop and raise an open question rather than reaching for IOReport here. *(maintainer)* it tracks Activity Monitor's GPU History under load.
+
+### M15: SoC temperatures on darwin (v1.1)
+
+- [ ] **The temps card fills in on the Mac.**
+  *Needs:* M7.
+  The IOHID event system (`IOHIDEventSystemClientCreate` and friends, private), resolved with `dlopen`/`dlsym` in the shim per decision 44. Readings are aggregated to CPU and GPU means and maxima per decision 45, in untagged `darwin_conv.go`, and published in the existing `temps` list, so the renderers need no new shape. Decision 45 gains the sensor-name mapping and its source.
+
+  *Acceptance:* conversion tests from captured sensor names and readings: the CPU and GPU aggregates; no matching sensors (`"temps": null`, as on Linux without hwmon); a sensor reading 0 or out of range (dropped, not averaged in); and a missing symbol (temps error, every other group served, no crash). `make shim-check` stays clean. `otool -L` is unchanged (the `dist-check` assertion). The darwin integration test accepts no sensors or aggregates between 0 and 150 °C. `make budget` passes, and resolution happens once, not per tick. *(maintainer)* on the Mini, CPU and GPU agree with macmon to within a few °C.
+
+### M16: CPU, GPU, and ANE power on darwin (v1.1)
+
+- [ ] **Watts per domain, from cumulative energy counters.**
+  *Needs:* M15 (the `dlopen` pattern).
+  IOReport's Energy Model channels, from `libIOReport.dylib` via `dlopen` per decision 44, with the subscription created once. The collector returns cumulative energy per domain (CPU, GPU, ANE) as raw counters. The sampler turns them into watts over the actual elapsed time, like every other rate. It's darwin-only, so it lives in the `"darwin"` sub-object, in a new `power` group with its own `errors` entry. Prometheus carries the cumulative counter and the rate, following PLAN's pattern for network bytes. Record the names in a decision.
+
+  *Acceptance:* sampler tests with a fake collector: the first sample is `null`, a counter that goes backwards is `null`, watts use the actual elapsed time, and a skipped tick still divides by the real gap. Conversion tests from captured channel values, covering unit scaling (mJ, µJ, nJ as IOReport reports them). A missing library or symbol is a `power` error, not a crash. Goldens for all four formats. `make budget` passes. *(maintainer)* `SOAK_MINUTES=60 make soak` on the Mini stays under 1% of one core with power on, and watts agree with macmon to within 10%.
 
 ---
 
@@ -54,7 +84,4 @@ Nothing is scheduled. Every milestone in PLAN has landed; the maintainer moves a
 
 The loop never starts these on its own. The maintainer moves one into **Open** to schedule it.
 
-- v1.1: Apple Silicon sensors (SoC temperatures, CPU/GPU/ANE power, GPU utilisation) through IOReport and IOHID, without root. Load IOReport at runtime with `dlopen`, and omit the fields if the symbols are missing. macmon is a reference.
-- A tailnet listener via `tsnet`, after research. Only `main.go` changes, by swapping `net.Listen` for `tsnet.Server.Listen`. Note that this would bring in third-party modules, which needs a decision of its own.
-- Optional top-N processes by CPU and memory, behind a flag and off by default.
-- The final project name (`vitals` is a placeholder).
+- Optional top-N processes by CPU and memory, behind a flag and off by default. Scheduling it means amending priority 4 and the non-goals, which rule out process lists. Without root, macOS may also refuse to read other users' processes, which would hide the system daemons that matter most on the Mini. Check that before scheduling it.

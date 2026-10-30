@@ -69,7 +69,7 @@ Flags: `-listen` (default `127.0.0.1:9110`), `-interval` (`2s`, at least `1s`), 
 ## Security notes
 
 - **Read-only.** Every endpoint answers `GET` and `HEAD` only, and nothing changes anything. Request bodies are ignored.
-- **No authentication.** Anyone who can reach the port can read it. That's why it listens on `127.0.0.1` by default and logs a warning when bound anywhere else. Prefer a private network (a VPN or tailnet, or a firewall rule) to exposing it publicly.
+- **No authentication.** Anyone who can reach the port can read it. That's why it listens on `127.0.0.1` by default and logs a warning when bound anywhere else. Prefer a private network (a VPN or tailnet, or a firewall rule) to exposing it publicly. On a tailnet, keep the default bind and run `tailscale serve --bg 9110`. Tailscale then serves it over HTTPS at the machine's tailnet name and reaches it on `127.0.0.1`, so the port never opens on another interface.
 - **What it reveals:** the hostname, OS and kernel versions, CPU model, mount points and filesystem types, interface names, and the numbers. It never outputs environment variables, command lines, usernames, or processes.
 - **Unprivileged.** It never needs root, never runs another program, and makes no network requests. The dashboard loads nothing beyond the page itself, and its Content-Security-Policy forbids it from doing so.
 - **Hardened server.** Header, read, write, and idle timeouts are set, request headers are capped at 16 KB, and every response has `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
