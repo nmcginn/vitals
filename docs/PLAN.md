@@ -4,20 +4,20 @@ Derived from [`docs/SPEC.md`](SPEC.md), the original specification. Where they d
 
 ## Goal
 
-`vitals` (working name) is a single-process, read-only Go web server. It reports the vital statistics of the host it runs on as server-rendered HTML, JSON, plain text, or Prometheus text format. The primary host is an Apple Silicon Mac Mini (`darwin/arm64`), and Mac-specific metrics are first-class. `linux/amd64` and `linux/arm64` are secondary, best-effort targets. It ships as one binary with no installed dependencies and no config files. It stays light enough to forget about: under 20 MB RSS and under 1% of one core at a 2s sample interval.
+`vitals` is a single-process, read-only Go web server. It reports the vital statistics of the host it runs on as server-rendered HTML, JSON, plain text, or Prometheus text format. The primary host is an Apple Silicon Mac Mini (`darwin/arm64`), and Mac-specific metrics are first-class. `linux/amd64` and `linux/arm64` are secondary, best-effort targets. It ships as one binary with no installed dependencies and no config files. It stays light enough to forget about: under 20 MB RSS and under 1% of one core at a 2s sample interval.
 
 ## Non-goals
 
 Out of scope for v1. Don't implement these, and don't add abstractions in anticipation of them:
 
 - **Multi-host aggregation.** No agents, no fan-out, no central server.
-- **Authentication and TLS.** Exposure is controlled by the bind address. The handler/listener split is the only accommodation for a future `tsnet` listener.
+- **Authentication and TLS.** Exposure is controlled by the bind address. To reach it over a tailnet, run `tailscale serve` in front of it; there is no built-in `tsnet` listener (decision 42).
 - **Process lists.** They're expensive and the most likely thing to leak sensitive information.
 - **Persistence.** History is an in-memory ring buffer, lost on restart. No database and no files written.
 - **Alerting, thresholds, notifications.**
 - **Runtime configuration, or any write endpoint.**
 - **Windows.**
-- **Third-party Go modules**, and private macOS APIs (IOReport) in v1.
+- **Third-party Go modules**, and private macOS APIs (IOReport) in v1. v1.1 loads them at runtime with `dlopen`, as decision 44 allows.
 
 ## Who it's for
 
@@ -71,7 +71,7 @@ Six groups. On macOS, collection calls Mach, sysctl, and IOKit directly through 
 | Memory | total, available, used, swap total/used; macOS also wired, compressed, active, inactive, file-backed, and memory pressure level (normal / warn / critical) | `host_statistics64(HOST_VM_INFO64)`; sysctl `hw.memsize`, `hw.pagesize`, `vm.swapusage`, `kern.memorystatus_vm_pressure_level` | `/proc/meminfo` (used = total − available) |
 | Disks | per mount: device, mount point, fs type, total, used, free, used %; read/write bytes/s per physical device | `getfsstat` + `statfs`; IOKit `IOBlockStorageDriver` "Statistics" dictionary for byte counters | `/proc/self/mounts`, `statfs`, `/proc/diskstats` deltas |
 | Network | per interface: rx/tx bytes/s, rx/tx packets/s, cumulative totals | sysctl `IFMIB_IFDATA` (`ifmibdata` / `if_data64`), per decision 24. **Not** `NET_RT_IFLIST2` or `getifaddrs`, whose counters wrap at 4 GiB for unprivileged callers | `/proc/net/dev` deltas |
-| Temperatures | per sensor: label, °C | Not in v1 (v1.1 stretch) | `/sys/class/hwmon/*` |
+| Temperatures | per sensor: label, °C | Not in v1. v1.1: the IOHID event system through `dlopen`, aggregated to CPU and GPU (M15, decisions 44, 45) | `/sys/class/hwmon/*` |
 
 Collection rules:
 
@@ -197,7 +197,7 @@ Command-line flags only, with safe defaults. There is no config file. Invalid va
 - `make build` produces `dist/vitals-darwin-arm64` with `CGO_ENABLED=1` (Xcode Command Line Tools required) on a Mac, and `dist/vitals-linux-{amd64,arm64}` with `CGO_ENABLED=0`.
 - Every build uses `-trimpath -ldflags "-s -w -X main.version=… -X main.commit=…"`. **Assumption:** the build date is also set, via `-X main.date=…`, for `-version`.
 - `MACOSX_DEPLOYMENT_TARGET` is set to the oldest macOS release the maintainer runs.
-- The C shim keeps to the public SDK headers.
+- The C shim keeps to the public SDK headers. Private symbols (v1.1) are declared by hand in the shim and resolved with `dlopen`, never linked (decision 44).
 - `contrib/` holds `com.vitals.plist` (launchd) and `vitals.service` (systemd). The README covers launchd first, then systemd.
 
 ## Intended architecture
@@ -265,3 +265,7 @@ The task-level breakdown, with Needs and acceptance criteria, is in `docs/ROADMA
 - **M10** Content negotiation and the text renderer.
 - **M11** Packaging: `make build`, launchd and systemd units, and the README.
 - **M12** The budget check: allocation and growth tests, plus a soak script.
+- **M13** Hide interfaces that have never moved a byte on the dashboard and in text.
+- **M14** v1.1: GPU utilisation on darwin, from public IOKit.
+- **M15** v1.1: SoC temperatures on darwin through `dlopen`, aggregated to CPU and GPU.
+- **M16** v1.1: CPU, GPU, and ANE power on darwin from IOReport energy counters.

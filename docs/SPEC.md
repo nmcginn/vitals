@@ -4,7 +4,7 @@
 
 ## Overview and goals
 
-`vitals` (working name) is a single-process, read-only Go web server. It reports the vital statistics of the one host it runs on, as server-rendered HTML, JSON, plain text, or Prometheus text format.
+`vitals` (working name) is a single-process, read-only Go web server. It reports the vital statistics of the one host it runs on, as server-rendered HTML, JSON, plain text, or Prometheus text format. *Amended: `vitals` is the name, decision 43.*
 
 Goals, in priority order:
 
@@ -20,7 +20,7 @@ Goals, in priority order:
 These are out of scope for v1. Do not implement them, and do not add abstractions in anticipation of them, except where noted.
 
 - **Multi-host aggregation.** Each instance reports only its own host. No agents, no fan-out, no central server.
-- **Authentication and TLS.** Exposure is controlled by the bind address. A tailnet listener via `tsnet` is planned as future work; the only accommodation now is the handler/listener split described under Architecture.
+- **Authentication and TLS.** Exposure is controlled by the bind address. A tailnet listener via `tsnet` is planned as future work; the only accommodation now is the handler/listener split described under Architecture. *Amended: `tsnet` is dropped in favour of `tailscale serve`, decision 42.*
 - **Process lists.** Expensive to collect and the most likely to leak sensitive information.
 - **Persistence.** History lives in a fixed-size in-memory ring buffer and is lost on restart. No database, no files written.
 - **Alerting, thresholds, or notifications.**
@@ -38,7 +38,7 @@ request path (per request):  net/http ──▶ Handler (route, negotiate) ─�
 
 The top row runs on the sampler's ticker. The bottom row runs once per request and stops at the store.
 
-**Handler/listener split.** `internal/server` exposes `New(store *sampler.Store, opts Options) http.Handler` and knows nothing about sockets. `main.go` creates the `net.Listener` and the `http.Server`. This split is the only accommodation for future `tsnet` support.
+**Handler/listener split.** `internal/server` exposes `New(store *sampler.Store, opts Options) http.Handler` and knows nothing about sockets. `main.go` creates the `net.Listener` and the `http.Server`. This split is the only accommodation for future `tsnet` support. *Amended: `tsnet` is dropped, decision 42; the split stays, because the server tests rely on it.*
 
 **Collector.** One interface, implemented per OS with build tags. It returns raw cumulative counters and instantaneous gauges, and computes no rates.
 
@@ -207,8 +207,8 @@ v1 is done when every item below holds on the Mac Mini. Items marked (Linux) mus
 
 Future work, not part of v1:
 
-- **v1.1 stretch: Apple Silicon sensors.** SoC temperatures, CPU/GPU/ANE power in watts, and GPU utilisation through IOReport and IOHID, without root. IOReport is private API: load it at runtime with `dlopen`, and degrade to omitting the fields if the symbols are missing after a macOS update. The rootless open-source tool macmon is a working reference.
-- **tailnet listener via `tsnet`.** Pending research. Only `main.go` should change: swap `net.Listen` for `tsnet.Server.Listen`.
+- **v1.1 stretch: Apple Silicon sensors.** SoC temperatures, CPU/GPU/ANE power in watts, and GPU utilisation through IOReport and IOHID, without root. IOReport is private API: load it at runtime with `dlopen`, and degrade to omitting the fields if the symbols are missing after a macOS update. The rootless open-source tool macmon is a working reference. *Amended: scheduled as M14 to M16, decisions 44 and 45.*
+- **tailnet listener via `tsnet`.** Pending research. Only `main.go` should change: swap `net.Listen` for `tsnet.Server.Listen`. *Amended: dropped, decision 42.*
 - **Optional top-N processes** by CPU and memory, behind a flag and off by default.
 
-Open question: the final project name. `vitals` is a placeholder.
+Open question: the final project name. `vitals` is a placeholder. *Amended: `vitals` is the name, decision 43.*
