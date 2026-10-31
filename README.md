@@ -64,7 +64,7 @@ curl localhost:9110/api/v1/stats?pretty=1
 
 `/` and `/api/v1/stats` serve any of the four formats: `?format=html`, `json`, `text`, or `prom`, or else the `Accept` header (`text/html`, `application/json`, `text/plain`, and `text/plain; version=0.0.4` or `application/openmetrics-text` for Prometheus). Without either, `/` is the dashboard and `/api/v1/stats` is JSON. A format they can't serve is `406`, listing the ones they can.
 
-Flags: `-listen` (default `127.0.0.1:9110`), `-interval` (`2s`, at least `1s`), `-history` (`15m`), `-disk-exclude` and `-net-exclude` (regexes that replace the built-in lists), `-log-level` (`debug`, `info`, `warn`, `error`), and `-version`. A bad value exits with status 2. There is no config file.
+Flags: `-listen` (default `127.0.0.1:9110`), `-interval` (`2s`, at least `1s`), `-history` (`15m`), `-disk-exclude` and `-net-exclude` (regexes that replace the built-in lists), `-log-level` (`debug`, `info`, `warn`, `error`), and `-version`. A bad value exits with status 2. There is no config file. The dashboard and text output also leave out any interface that has never sent or received a byte; JSON and `/metrics` list every interface the filter keeps.
 
 ## Security notes
 

@@ -33,21 +33,27 @@ vitals_disk_written_bytes_per_second{device="disk0"} 40960
 # HELP vitals_network_receive_bytes_per_second Bytes received per second.
 # TYPE vitals_network_receive_bytes_per_second gauge
 vitals_network_receive_bytes_per_second{iface="en0"} 12800
+vitals_network_receive_bytes_per_second{iface="gif0"} 0
 # HELP vitals_network_transmit_bytes_per_second Bytes sent per second.
 # TYPE vitals_network_transmit_bytes_per_second gauge
 vitals_network_transmit_bytes_per_second{iface="en0"} 3400
+vitals_network_transmit_bytes_per_second{iface="gif0"} 0
 # HELP vitals_network_receive_packets_per_second Packets received per second.
 # TYPE vitals_network_receive_packets_per_second gauge
 vitals_network_receive_packets_per_second{iface="en0"} 21
+vitals_network_receive_packets_per_second{iface="gif0"} 0
 # HELP vitals_network_transmit_packets_per_second Packets sent per second.
 # TYPE vitals_network_transmit_packets_per_second gauge
 vitals_network_transmit_packets_per_second{iface="en0"} 14
+vitals_network_transmit_packets_per_second{iface="gif0"} 0
 # HELP vitals_network_receive_bytes_total Bytes received since the interface came up.
 # TYPE vitals_network_receive_bytes_total counter
 vitals_network_receive_bytes_total{iface="en0"} 98234111
+vitals_network_receive_bytes_total{iface="gif0"} 0
 # HELP vitals_network_transmit_bytes_total Bytes sent since the interface came up.
 # TYPE vitals_network_transmit_bytes_total counter
 vitals_network_transmit_bytes_total{iface="en0"} 12001221
+vitals_network_transmit_bytes_total{iface="gif0"} 0
 # HELP vitals_collector_error 1 when the group failed on this sample, 0 otherwise.
 # TYPE vitals_collector_error gauge
 vitals_collector_error{group="host"} 0

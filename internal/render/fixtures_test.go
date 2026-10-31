@@ -13,7 +13,8 @@ var sampledAt = time.Date(2026, 10, 21, 14, 2, 6, 0, time.UTC)
 
 func p[T any](v T) *T { return &v }
 
-// darwinFull is a second sample on an M4 Mac Mini: every group, every rate.
+// darwinFull is a second sample on an M4 Mac Mini: every group, every rate,
+// and an interface that has never moved a byte, as most of a Mac's do.
 func darwinFull() *sampler.Snapshot {
 	boot := time.Date(2026, 10, 11, 14, 2, 6, 0, time.UTC)
 	return &sampler.Snapshot{
@@ -49,6 +50,8 @@ func darwinFull() *sampler.Snapshot {
 		Network: []sampler.Interface{{
 			Name: "en0", RxBps: p(12800.0), TxBps: p(3400.0), RxPps: p(21.0), TxPps: p(14.0),
 			RxTotalBytes: 98234111, TxTotalBytes: 12001221,
+		}, {
+			Name: "gif0", RxBps: p(0.0), TxBps: p(0.0), RxPps: p(0.0), TxPps: p(0.0),
 		}},
 		Errors: map[string]string{},
 	}
@@ -62,8 +65,10 @@ func darwinFirst() *sampler.Snapshot {
 		s.CPU.PerCorePct[i] = nil
 	}
 	s.Disks[0].ReadBps, s.Disks[0].WriteBps = nil, nil
-	n := &s.Network[0]
-	n.RxBps, n.TxBps, n.RxPps, n.TxPps = nil, nil, nil, nil
+	for i := range s.Network {
+		n := &s.Network[i]
+		n.RxBps, n.TxBps, n.RxPps, n.TxPps = nil, nil, nil, nil
+	}
 	return s
 }
 
@@ -118,7 +123,8 @@ func darwinErrors() *sampler.Snapshot {
 }
 
 // historyOf is n samples ending in s, two seconds apart, with CPU, memory,
-// and every interface's rates varying so sparklines have something to draw.
+// and every busy interface's rates varying so sparklines have something to
+// draw. An idle interface stays at s's rates, as a real one would.
 // The oldest sample has no rates, like the first one after startup, and
 // sample 3 is missing its network group.
 func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
@@ -138,6 +144,10 @@ func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
 		}
 		snap.Network = make([]sampler.Interface, len(s.Network))
 		for j, nic := range s.Network {
+			if isIdle(nic) {
+				snap.Network[j] = nic
+				continue
+			}
 			nic.RxBps = p(float64((i*53+j*11)%97) * 1024)
 			nic.TxBps = p(float64((i*29+j*7)%41) * 512)
 			snap.Network[j] = nic
