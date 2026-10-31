@@ -93,7 +93,8 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 	v.CPUSpark = spark{Path: sparkPath(cpu, 100), Title: v.title("CPU usage", "now "+humanPct(cpuNow(s)))}
 	mem := memSeries(history)
 	v.MemSpark = spark{Path: sparkPath(mem, 100), Title: v.title("Memory used", "now "+humanPct(memPct(s.Memory)))}
-	for _, n := range s.Network {
+	v.Network = shownInterfaces(s.Network)
+	for _, n := range v.Network {
 		rx, tx := netSeries(history, n.Name)
 		top := peak(rx, tx) // one scale, so rx and tx compare at a glance
 		v.NetSparks = append(v.NetSparks, netSpark{
@@ -124,7 +125,8 @@ type dashboard struct {
 	Cores       []core
 	CPUSpark    spark
 	MemSpark    spark
-	NetSparks   []netSpark // one per S.Network entry, in the same order
+	Network     []sampler.Interface // S.Network without its idle interfaces
+	NetSparks   []netSpark          // one per Network entry, in the same order
 }
 
 type spark struct{ Path, Title string }
