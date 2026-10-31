@@ -144,12 +144,13 @@ func (w *textWriter) network(s *sampler.Snapshot) {
 	}
 	w.line("Network")
 	w.problem("  ", "", s.Errors["network"])
-	if len(s.Network) == 0 {
+	shown := shownInterfaces(s.Network)
+	if len(shown) == 0 {
 		w.line("  No interfaces to show.")
 		return
 	}
-	ifaces := make([]string, len(s.Network))
-	for i, n := range s.Network {
+	ifaces := make([]string, len(shown))
+	for i, n := range shown {
 		ifaces[i] = n.Name
 	}
 	name := nameWidth(textWidth-2-4-2*rateCol-2*bytesCol, "IFACE", ifaces)
@@ -158,7 +159,7 @@ func (w *textWriter) network(s *sampler.Snapshot) {
 			right(rxTotal, bytesCol) + " " + right(txTotal, bytesCol))
 	}
 	row("IFACE", "RECEIVE", "SEND", "RX TOTAL", "TX TOTAL")
-	for _, n := range s.Network {
+	for _, n := range shown {
 		row(n.Name, humanRate(n.RxBps), humanRate(n.TxBps), humanBytes(n.RxTotalBytes), humanBytes(n.TxTotalBytes))
 	}
 }

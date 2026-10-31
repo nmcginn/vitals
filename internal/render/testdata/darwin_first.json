@@ -85,6 +85,15 @@
       "tx_pps": null,
       "rx_total_bytes": 98234111,
       "tx_total_bytes": 12001221
+    },
+    {
+      "iface": "gif0",
+      "rx_bps": null,
+      "tx_bps": null,
+      "rx_pps": null,
+      "tx_pps": null,
+      "rx_total_bytes": 0,
+      "tx_total_bytes": 0
     }
   ],
   "temps": null,

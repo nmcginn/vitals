@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: v1 is built; M0 to M12 have all merged. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
-- Next up: M13, then the v1.1 sensors (M14 to M16).
-- Open PRs waiting on review: the roadmap update that schedules M13 to M16.
+- Current: v1 is built; M0 to M12 have all merged, and M13 is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
+- Next up: the v1.1 sensors, M14 to M16.
+- Open PRs waiting on review: M13, idle interfaces hidden on the dashboard and in text.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ None.
 ---
 
 ## Open
-
-### M13: Hide idle interfaces on the dashboard and in text
-
-- [ ] **An interface that has never moved a byte doesn't take up a row on the phone.**
-  *Needs:* M8, M10.
-  Per decision 41: the HTML and text renderers skip an interface whose `RxBytes` and `TxBytes` are both 0. JSON and Prometheus are unchanged. One shared helper in `internal/render` decides, so the two renderers can't disagree.
-
-  *Acceptance:* table-driven tests cover an idle interface (absent from HTML and text, present in JSON and Prometheus); one byte received, and separately one byte sent (shown); and every interface idle (the card and text say "No interfaces to show.", as when every interface is filtered out). Goldens include an idle interface. The first sample, when rates are null and totals aren't, hides by totals alone. *(maintainer)* the Mini's network card shows only the ports in use.
 
 ### M14: GPU utilisation on darwin (v1.1)
 
@@ -77,6 +69,7 @@ None.
 - **M10: Negotiation and text.** `negotiate` in `internal/server` (`?format=`, then `Accept` by q and specificity, then the default; `406` listing the formats; `Vary: Accept`) on `/` and `/api/v1/stats`, `render.Text` at 80 columns with names cut by `…` and errors wrapped, and the footer's `Text` link (decisions 36, 37).
 - **M11: Packaging.** `make build` (darwin only on a Mac, `MACOSX_DEPLOYMENT_TARGET=13.0`), `dist-check` in `make check` (static Linux binaries, `otool -L`, `plutil -lint`, `systemd-analyze verify`, `-version`), `contrib/com.vitals.plist` and `contrib/vitals.service`, and the README's install and security notes (decisions 38, 39).
 - **M12: Budget.** Allocation and growth tests for the tick and the renderers in `make budget` (part of `make check`), benchmarks for collect, tick, and each renderer, the dashboard's sparklines downsampled in place, and `make soak` (decision 40). *(maintainer)* The one-hour idle check on the Mini is still to run: `SOAK_MINUTES=60 make soak`.
+- **M13: Idle interfaces.** `shownInterfaces` in `render/shown.go` drops interfaces with zero rx and tx totals from the dashboard and text, and JSON and Prometheus list every one (decision 41). *(maintainer)* the Mini's network card shows only the ports in use.
 
 ---
 
