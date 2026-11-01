@@ -19,6 +19,7 @@ type Snapshot struct {
 	Disks           []Disk            `json:"disks"`
 	Network         []Interface       `json:"network"`
 	Temps           []collector.Temp  `json:"temps"`
+	Darwin          *Darwin           `json:"darwin,omitempty"`
 	Errors          map[string]string `json:"errors"`
 }
 
@@ -41,6 +42,12 @@ type CPU struct {
 	Cores      int                  `json:"cores"`
 	Model      string               `json:"model"`
 	Darwin     *collector.CPUDarwin `json:"darwin,omitempty"`
+}
+
+// Darwin holds the groups only darwin has (decision 46). It is present on
+// darwin, where a nil group failed and Errors says why, and nil elsewhere.
+type Darwin struct {
+	GPU *collector.GPU `json:"gpu"`
 }
 
 type Disk struct {
@@ -152,6 +159,9 @@ func build(info collector.HostInfo, prev *collector.Raw, cur collector.Raw, elap
 	}
 	if len(cur.Temps) > 0 {
 		s.Temps = cur.Temps
+	}
+	if info.OS == "darwin" {
+		s.Darwin = &Darwin{GPU: cur.GPU}
 	}
 	for g, err := range cur.Errors {
 		s.Errors[g] = err.Error()

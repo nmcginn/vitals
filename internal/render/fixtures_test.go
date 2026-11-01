@@ -53,6 +53,7 @@ func darwinFull() *sampler.Snapshot {
 		}, {
 			Name: "gif0", RxBps: p(0.0), TxBps: p(0.0), RxPps: p(0.0), TxPps: p(0.0),
 		}},
+		Darwin: &sampler.Darwin{GPU: &collector.GPU{UtilizationPct: 23}},
 		Errors: map[string]string{},
 	}
 }
@@ -109,21 +110,23 @@ func linuxPartial() *sampler.Snapshot {
 	}
 }
 
-// darwinErrors is a darwin sample where CPU and memory failed, one mount
-// couldn't be read, and the rest is fine.
+// darwinErrors is a darwin sample where CPU, memory, and the GPU failed, one
+// mount couldn't be read, and the rest is fine.
 func darwinErrors() *sampler.Snapshot {
 	s := darwinFull()
 	s.CPU, s.Memory = nil, nil
+	s.Darwin = &sampler.Darwin{}
 	s.Errors = map[string]string{
 		"cpu":    "host_processor_info: (os/kern) failure",
 		"memory": "host_statistics64: (os/kern) failure",
 		"disks":  `statfs "/Volumes/Backup": input/output error`,
+		"gpu":    "the IORegistry lists no IOAccelerator, so there is no GPU to read",
 	}
 	return s
 }
 
-// historyOf is n samples ending in s, two seconds apart, with CPU, memory,
-// and every busy interface's rates varying so sparklines have something to
+// historyOf is n samples ending in s, two seconds apart, with CPU, GPU,
+// memory, and every busy interface's rates varying so sparklines have something to
 // draw. An idle interface stays at s's rates, as a real one would.
 // The oldest sample has no rates, like the first one after startup, and
 // sample 3 is missing its network group.
@@ -136,6 +139,9 @@ func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
 			c := *s.CPU
 			c.UsagePct = p(float64(i * 37 % 100))
 			snap.CPU = &c
+		}
+		if s.Darwin != nil && s.Darwin.GPU != nil {
+			snap.Darwin = &sampler.Darwin{GPU: &collector.GPU{UtilizationPct: float64(i * 23 % 100)}}
 		}
 		if s.Memory != nil {
 			m := *s.Memory

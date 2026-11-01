@@ -169,9 +169,26 @@ func TestPromValues(t *testing.T) {
 				got[smp.labels["group"]] = smp.value
 			}
 		}
-		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 0}
+		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 0, "gpu": 1}
 		if fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Errorf("collector errors = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("the GPU is a 0 to 1 ratio on darwin, left out when its group failed", func(t *testing.T) {
+		if b := string(Prom(darwinFull(), testBuild)); !strings.Contains(b, "\nvitals_gpu_utilization_ratio 0.23\n") {
+			t.Errorf("23%% GPU is not a ratio of 0.23:\n%s", b)
+		}
+		if b := string(Prom(darwinErrors(), testBuild)); strings.Contains(b, "vitals_gpu_utilization_ratio") {
+			t.Error("a failed GPU group still has a utilization sample")
+		}
+	})
+
+	t.Run("an idle GPU is 0, not left out", func(t *testing.T) {
+		s := darwinFull()
+		s.Darwin.GPU.UtilizationPct = 0
+		if b := string(Prom(s, testBuild)); !strings.Contains(b, "\nvitals_gpu_utilization_ratio 0\n") {
+			t.Errorf("an idle GPU has no sample:\n%s", b)
 		}
 	})
 
@@ -198,7 +215,7 @@ func TestPromValues(t *testing.T) {
 			t.Error("darwin has temperature lines without sensors")
 		}
 		b = string(Prom(linuxPartial(), testBuild))
-		for _, absent := range []string{"vitals_memory_wired_bytes", "vitals_cpu_core_info", "vitals_memory_pressure", "vitals_network_"} {
+		for _, absent := range []string{"vitals_memory_wired_bytes", "vitals_cpu_core_info", "vitals_memory_pressure", "vitals_network_", "vitals_gpu_", `group="gpu"`} {
 			if strings.Contains(b, absent) {
 				t.Errorf("linux output has %s", absent)
 			}

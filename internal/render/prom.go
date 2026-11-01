@@ -15,7 +15,8 @@ type Build struct {
 }
 
 // groups are every group vitals_collector_error reports, in output order, so
-// a group that is fine reads 0 rather than vanishing.
+// a group that is fine reads 0 rather than vanishing. Darwin adds gpu, which
+// is no group at all elsewhere (decision 46).
 var groups = []string{
 	collector.GroupHost, collector.GroupCPU, collector.GroupMemory,
 	collector.GroupDisks, collector.GroupNetwork, collector.GroupTemps,
@@ -60,6 +61,10 @@ func Prom(s *sampler.Snapshot, b Build) []byte {
 				f.add("1", "cpu", strconv.Itoa(i), "kind", kind)
 			}
 		}
+	}
+
+	if d := s.Darwin; d != nil && d.GPU != nil {
+		w.family("vitals_gpu_utilization_ratio", "gauge", "Busy share of the GPU, 0 to 1, as the driver reports it.").ratio(&d.GPU.UtilizationPct)
 	}
 
 	if m := s.Memory; m != nil {
@@ -129,6 +134,10 @@ func Prom(s *sampler.Snapshot, b Build) []byte {
 	for _, g := range groups {
 		_, failed := s.Errors[g]
 		errs.add(boolStr(failed), "group", g)
+	}
+	if s.Darwin != nil {
+		_, failed := s.Errors[collector.GroupGPU]
+		errs.add(boolStr(failed), "group", collector.GroupGPU)
 	}
 	return w.bytes()
 }

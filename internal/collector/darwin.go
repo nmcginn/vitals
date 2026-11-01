@@ -32,6 +32,8 @@ type darwin struct {
 	load   [C.VITALS_MAX_CPUS]C.struct_vitals_cpu_load
 	ifaces [C.VITALS_MAX_IFACES]C.struct_vitals_iface
 	mounts [C.VITALS_MAX_MOUNTS]C.struct_vitals_mount
+	gpus   [C.VITALS_MAX_GPUS]C.struct_vitals_gpu
+	gpuRs  [C.VITALS_MAX_GPUS]gpuReading
 	opts   Options
 }
 
@@ -101,6 +103,9 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	if raw.Disks, err = d.disks(); err != nil {
 		raw.Errors[GroupDisks] = err
 	}
+	if raw.GPU, err = d.gpu(); err != nil {
+		raw.Errors[GroupGPU] = err
+	}
 	return raw, nil
 }
 
@@ -162,6 +167,18 @@ func (d *darwin) network() ([]Interface, error) {
 		}
 	}
 	return keepIfaces(ifs, d.opts.NetExclude), nil
+}
+
+// gpu reads every IOAccelerator. When the registry lists more than the shim
+// holds, rs is shorter than n and gpuFromAccelerators says so.
+func (d *darwin) gpu() (*GPU, error) {
+	n := int(C.vitals_gpus(&d.gpus[0], C.VITALS_MAX_GPUS))
+	rs := d.gpuRs[:min(max(n, 0), C.VITALS_MAX_GPUS)]
+	for i := range rs {
+		g := &d.gpus[i]
+		rs[i] = gpuReading{HasStats: g.has_stats != 0, HasUtil: g.has_util != 0, Util: float64(g.util)}
+	}
+	return gpuFromAccelerators(n, rs)
 }
 
 // memory returns the memory group, which may come with an error when only the

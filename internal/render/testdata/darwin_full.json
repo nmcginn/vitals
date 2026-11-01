@@ -97,5 +97,10 @@
     }
   ],
   "temps": null,
+  "darwin": {
+    "gpu": {
+      "utilization_pct": 23
+    }
+  },
   "errors": {}
 }
