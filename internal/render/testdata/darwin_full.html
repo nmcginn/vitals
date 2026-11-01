@@ -173,6 +173,7 @@ section:has(details:not([open])) { align-self: start; }
    the cards themselves (decision 34). One line per card. */
 :root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
 :root[data-closed~="memory"] [data-card="memory"] > :not(summary),
+:root[data-closed~="gpu"] [data-card="gpu"] > :not(summary),
 :root[data-closed~="disks"] [data-card="disks"] > :not(summary),
 :root[data-closed~="network"] [data-card="network"] > :not(summary),
 :root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }
@@ -286,6 +287,12 @@ section:has(details:not([open])) { align-self: start; }
 <dt>Inactive</dt><dd class="num">3.0 GiB</dd>
 <dt>File-backed</dt><dd class="num">2.5 GiB</dd>
 </dl>
+</details>
+</section>
+<section aria-labelledby="gpu">
+<details data-card="gpu" open>
+<summary><h2 id="gpu">GPU</h2></summary>
+<div class="now"><span class="big num">23.0%</span><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>GPU usage over the last 58 s, now 23.0%</title><path d="M0 31L4.1 24.1L8.3 17.2L12.4 10.3L16.6 3.4L20.7 26.5L24.8 19.6L29 12.7L33.1 5.8L37.2 28.9L41.4 22L45.5 15.1L49.7 8.2L53.8 1.3L57.9 24.4L62.1 17.5L66.2 10.6L70.3 3.7L74.5 26.8L78.6 19.9L82.8 13L86.9 6.1L91 29.2L95.2 22.3L99.3 15.4L103.4 8.5L107.6 1.6L111.7 24.7L115.9 17.8L120 24.1"/></svg></div>
 </details>
 </section>
 <section aria-labelledby="disks">

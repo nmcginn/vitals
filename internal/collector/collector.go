@@ -15,6 +15,7 @@ const (
 	GroupDisks   = "disks"
 	GroupNetwork = "network"
 	GroupTemps   = "temps"
+	GroupGPU     = "gpu" // darwin only
 )
 
 // unknownModel is HostInfo.CPUModel when the OS doesn't name the CPU.
@@ -52,6 +53,7 @@ type Raw struct {
 	Disks   []Disk
 	Network []Interface
 	Temps   []Temp // nil or empty when the machine has no sensors
+	GPU     *GPU   // darwin only
 	Errors  map[string]error
 }
 
@@ -124,6 +126,12 @@ type Interface struct {
 	Name                 string
 	RxBytes, TxBytes     uint64
 	RxPackets, TxPackets uint64
+}
+
+// GPU is all gauges, so the snapshot uses it as is. UtilizationPct is the
+// IOAccelerator's "Device Utilization %", 0 to 100 (decision 46).
+type GPU struct {
+	UtilizationPct float64 `json:"utilization_pct"`
 }
 
 type Temp struct {

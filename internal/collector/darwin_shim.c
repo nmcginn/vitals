@@ -319,3 +319,43 @@ int vitals_disk_io(const char *bsd_name, struct vitals_disk_io *out) {
 	IOObjectRelease(child);
 	return rc;
 }
+
+static void copy_gpu(io_registry_entry_t entry, struct vitals_gpu *out) {
+	out->has_stats = 0;
+	out->has_util = 0;
+	out->util = 0;
+	CFTypeRef stats = IORegistryEntryCreateCFProperty(entry, CFSTR("PerformanceStatistics"), kCFAllocatorDefault, 0);
+	if (stats == NULL) {
+		return;
+	}
+	if (CFGetTypeID(stats) == CFDictionaryGetTypeID()) {
+		out->has_stats = 1;
+		CFTypeRef v = CFDictionaryGetValue((CFDictionaryRef)stats, CFSTR("Device Utilization %"));
+		if (v != NULL && CFGetTypeID(v) == CFNumberGetTypeID()) {
+			CFNumberGetValue((CFNumberRef)v, kCFNumberDoubleType, &out->util);
+			out->has_util = 1;
+		}
+	}
+	CFRelease(stats);
+}
+
+// The driver publishes its counters on the accelerator's own registry entry,
+// which any user can read (decision 46).
+int vitals_gpus(struct vitals_gpu *out, int max) {
+	io_iterator_t iter = 0;
+	// IOServiceGetMatchingServices consumes the matching dictionary.
+	if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iter) != KERN_SUCCESS) {
+		return -1;
+	}
+	int n = 0;
+	io_registry_entry_t entry;
+	while ((entry = IOIteratorNext(iter)) != 0) {
+		if (n < max) {
+			copy_gpu(entry, &out[n]);
+		}
+		IOObjectRelease(entry);
+		n++;
+	}
+	IOObjectRelease(iter);
+	return n;
+}

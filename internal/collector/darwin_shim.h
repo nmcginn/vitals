@@ -89,6 +89,17 @@ struct vitals_disk_io {
 	uint64_t write_bytes;
 };
 
+// More GPUs than any Mac has; an Apple Silicon Mac has one IOAccelerator.
+#define VITALS_MAX_GPUS 8
+
+// One IOAccelerator's utilization, from its "PerformanceStatistics" registry
+// property.
+struct vitals_gpu {
+	int32_t has_stats; // 0 when the entry has no PerformanceStatistics dictionary
+	int32_t has_util;  // 0 when the dictionary has no "Device Utilization %" number
+	double util;       // "Device Utilization %", when has_util is 1
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -127,5 +138,9 @@ int vitals_statfs(struct vitals_mount *m);
 // if no IOBlockStorageDriver is above it, or -3 if the driver has no
 // "Statistics" byte counters, as on some virtual disks.
 int vitals_disk_io(const char *bsd_name, struct vitals_disk_io *out);
+
+// Copies up to max IOAccelerator services' utilization into out. Returns the
+// number of services, which may exceed max, or -1 if matching them failed.
+int vitals_gpus(struct vitals_gpu *out, int max);
 
 #endif

@@ -63,5 +63,6 @@ Run `make check`. The suite needs no credentials and no network, and that is a p
 - Collectors return per-group errors inside `Raw`. A group failure never fails the whole sample. `Collect` returns a non-nil error only when nothing at all could be collected.
 - The sampler copies group errors into `Snapshot.Errors` (`map[group]string`), and logs each failing group at most once per minute via `slog`.
 - Messages say what failed and where: `memory: reading /proc/meminfo: MemAvailable missing (kernel older than 3.14?)`. They never contain environment variables, usernames, or command lines.
+- Darwin-only groups (`gpu`, decision 46) sit in `Snapshot.Darwin`, which the sampler sets only when `HostInfo.OS` is darwin, so Linux output has no trace of them.
 - Renderers show errors in place. JSON has `errors`, the dashboard's card for the failing group says what failed, Prometheus sets `vitals_collector_error{group}`, and text prints a line.
 - Startup errors (a bad flag, a failed listen) exit with a message naming the flag or address. Bad flags exit with status 2.

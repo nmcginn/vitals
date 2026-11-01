@@ -342,6 +342,48 @@ func TestGauges(t *testing.T) {
 	})
 }
 
+func TestDarwinGroups(t *testing.T) {
+	ctx := context.Background()
+	one := func(raw collector.Raw) *Snapshot {
+		s, store, _, _ := harness(t, 2*time.Second, step{raw: raw})
+		s.tick(ctx)
+		return store.Latest()
+	}
+
+	t.Run("the GPU reading is darwin.gpu.utilization_pct, on the first sample too", func(t *testing.T) {
+		raw := full(1)
+		raw.GPU = &collector.GPU{UtilizationPct: 37}
+		b, _ := json.Marshal(one(raw))
+		if !strings.Contains(string(b), `"darwin":{"gpu":{"utilization_pct":37}}`) {
+			t.Errorf("got %s, want darwin.gpu.utilization_pct 37", b)
+		}
+	})
+
+	t.Run("a failed GPU group is darwin.gpu null with its error, and the other groups are served", func(t *testing.T) {
+		raw := full(1)
+		raw.Errors = map[string]error{collector.GroupGPU: errors.New("the IORegistry lists no IOAccelerator, so there is no GPU to read")}
+		snap := one(raw)
+		b, _ := json.Marshal(snap)
+		if !strings.Contains(string(b), `"darwin":{"gpu":null}`) {
+			t.Errorf("got %s, want darwin.gpu null", b)
+		}
+		if snap.Errors["gpu"] == "" {
+			t.Errorf("errors = %v, want a gpu entry", snap.Errors)
+		}
+		if snap.CPU == nil || snap.Memory == nil || len(snap.Disks) != 1 || len(snap.Network) != 1 {
+			t.Errorf("other groups missing: %+v", snap)
+		}
+	})
+
+	t.Run("off darwin there is no darwin object at all", func(t *testing.T) {
+		snap := build(collector.HostInfo{Hostname: "box", OS: "linux"}, nil, full(1), 0, t0, 2*time.Second)
+		b, _ := json.Marshal(snap)
+		if snap.Darwin != nil || strings.Contains(string(b), `"darwin"`) {
+			t.Errorf("got %s, want no darwin key", b)
+		}
+	})
+}
+
 func TestFailures(t *testing.T) {
 	ctx := context.Background()
 

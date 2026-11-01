@@ -173,6 +173,7 @@ section:has(details:not([open])) { align-self: start; }
    the cards themselves (decision 34). One line per card. */
 :root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
 :root[data-closed~="memory"] [data-card="memory"] > :not(summary),
+:root[data-closed~="gpu"] [data-card="gpu"] > :not(summary),
 :root[data-closed~="disks"] [data-card="disks"] > :not(summary),
 :root[data-closed~="network"] [data-card="network"] > :not(summary),
 :root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }
@@ -259,6 +260,12 @@ section:has(details:not([open])) { align-self: start; }
 <details data-card="memory" open>
 <summary><h2 id="memory">Memory</h2></summary>
 <p class="error">Memory unavailable: host_statistics64: (os/kern) failure</p>
+</details>
+</section>
+<section aria-labelledby="gpu">
+<details data-card="gpu" open>
+<summary><h2 id="gpu">GPU</h2></summary>
+<p class="error">GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to read</p>
 </details>
 </section>
 <section aria-labelledby="disks">

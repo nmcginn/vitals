@@ -170,6 +170,7 @@ func TestHTMLContent(t *testing.T) {
 		for _, want := range []string{
 			`<p class="error">CPU unavailable: host_processor_info: (os/kern) failure</p>`,
 			`<p class="error">Memory unavailable: host_statistics64: (os/kern) failure</p>`,
+			`<p class="error">GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to read</p>` + "\n</details>",
 			`<p class="error">Disks: statfs &#34;/Volumes/Backup&#34;: input/output error</p>` + "\n<table>",
 			`<th scope="row">en0</th>`,
 		} {
@@ -203,6 +204,27 @@ func TestHTMLContent(t *testing.T) {
 		page := mustHTML(t, s, nil, Page{})
 		if strings.Contains(page, "<script>alert") || !strings.Contains(page, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
 			t.Errorf("hostname not escaped:\n%s", page[:min(len(page), 400)])
+		}
+	})
+
+	t.Run("darwin has a GPU card with its utilization and a sparkline, and linux has none", func(t *testing.T) {
+		s := darwinFull()
+		page := mustHTML(t, s, historyOf(s, 60), Page{})
+		for _, want := range []string{`<h2 id="gpu">GPU</h2>`, `<span class="big num">23.0%</span>`, "<title>GPU usage over the last 2 min, now 23.0%</title><path"} {
+			if !strings.Contains(page, want) {
+				t.Errorf("page lacks %q", want)
+			}
+		}
+		if page := mustHTML(t, linuxPartial(), nil, Page{}); strings.Contains(page, "GPU") {
+			t.Error("linux page mentions a GPU")
+		}
+	})
+
+	t.Run("a GPU card with no reading and no error shows —, not 0", func(t *testing.T) {
+		s := darwinFull()
+		s.Darwin.GPU = nil
+		if page := mustHTML(t, s, nil, Page{}); !strings.Contains(page, `<h2 id="gpu">GPU</h2></summary>`+"\n"+`<div class="now"><span class="big num">—</span>`) {
+			t.Error("an unknown GPU reading isn't —")
 		}
 	})
 
