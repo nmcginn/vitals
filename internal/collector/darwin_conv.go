@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"regexp"
@@ -221,4 +222,46 @@ func diskIOFromShim(rc int, device string, read, written uint64) *DiskIO {
 		return nil
 	}
 	return &DiskIO{Device: device, ReadBytes: read, WriteBytes: written}
+}
+
+// gpuReading mirrors one IOAccelerator from the shim.
+type gpuReading struct {
+	HasStats bool    // the entry has a PerformanceStatistics dictionary
+	HasUtil  bool    // the dictionary has a "Device Utilization %" number
+	Util     float64 // that number
+}
+
+// gpuFromAccelerators is the GPU group from the n IOAccelerator services the
+// registry listed and the readings the shim copied from them (len(rs) is n,
+// or the shim's capacity when n is more). A Mac with two
+// GPUs (an Intel Mac with a discrete card) reports the busier one. Without a
+// reading in 0 to 100 the group fails, saying what was missing, because a
+// guessed 0 would read as an idle GPU (decision 46).
+func gpuFromAccelerators(n int, rs []gpuReading) (*GPU, error) {
+	switch {
+	case n < 0:
+		return nil, errors.New("listing IOAccelerator services in the IORegistry failed")
+	case n == 0:
+		return nil, errors.New("the IORegistry lists no IOAccelerator, so there is no GPU to read")
+	case n > len(rs):
+		return nil, fmt.Errorf("the IORegistry lists %d IOAccelerator services, more than the shim's %d", n, len(rs))
+	}
+	var best *GPU
+	var problem error
+	for i, r := range rs {
+		switch {
+		case !r.HasStats:
+			problem = cmp.Or(problem, fmt.Errorf("IOAccelerator %d has no PerformanceStatistics", i+1))
+		case !r.HasUtil:
+			problem = cmp.Or(problem, fmt.Errorf(`IOAccelerator %d's PerformanceStatistics has no "Device Utilization %%"`, i+1))
+		case !(r.Util >= 0 && r.Util <= 100): // NaN too
+			problem = cmp.Or(problem, fmt.Errorf(`IOAccelerator %d reports "Device Utilization %%" of %v, outside 0 to 100`, i+1, r.Util))
+		case best == nil || r.Util > best.UtilizationPct:
+			best = &GPU{UtilizationPct: r.Util}
+		}
+	}
+	if best == nil {
+		return nil, problem
+	}
+	return best, nil
 }

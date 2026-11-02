@@ -58,6 +58,7 @@ func mini(n uint64) collector.Raw {
 				IO: &collector.DiskIO{Device: "disk4", ReadBytes: 4096 * n, WriteBytes: 8192 * n}},
 		},
 		Network: ifaces,
+		GPU:     &collector.GPU{UtilizationPct: 12},
 		Errors:  map[string]error{},
 	}
 }
@@ -85,11 +86,12 @@ func replay(n, capacity int) (*Sampler, *Store) {
 //	13  cpu: the struct, the per-core slice, total usage, 10 cores' usage
 //	 7  disks: the slice, 2 mounts' used %, 2 mounts' read and write rates
 //	33  network: the slice, 8 interfaces' 4 rates
+//	 1  darwin: the sub-object (the GPU reading is the collector's, passed through)
 //
 // A 16-interface machine would allocate more, and that's fine. What this guards
 // is a tick that starts allocating per sample of history, or an accidental
 // copy of the collection.
-const tickAllocs = 7 + 3 + 13 + 7 + 33
+const tickAllocs = 7 + 3 + 13 + 7 + 33 + 1
 
 // raceEnabled is set by race_test.go. The race detector makes sync.Pool drop
 // items at random, so allocation counts under it measure the detector; `make

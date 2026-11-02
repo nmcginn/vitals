@@ -71,6 +71,7 @@ Six groups. On macOS, collection calls Mach, sysctl, and IOKit directly through 
 | Memory | total, available, used, swap total/used; macOS also wired, compressed, active, inactive, file-backed, and memory pressure level (normal / warn / critical) | `host_statistics64(HOST_VM_INFO64)`; sysctl `hw.memsize`, `hw.pagesize`, `vm.swapusage`, `kern.memorystatus_vm_pressure_level` | `/proc/meminfo` (used = total − available) |
 | Disks | per mount: device, mount point, fs type, total, used, free, used %; read/write bytes/s per physical device | `getfsstat` + `statfs`; IOKit `IOBlockStorageDriver` "Statistics" dictionary for byte counters | `/proc/self/mounts`, `statfs`, `/proc/diskstats` deltas |
 | Network | per interface: rx/tx bytes/s, rx/tx packets/s, cumulative totals | sysctl `IFMIB_IFDATA` (`ifmibdata` / `if_data64`), per decision 24. **Not** `NET_RT_IFLIST2` or `getifaddrs`, whose counters wrap at 4 GiB for unprivileged callers | `/proc/net/dev` deltas |
+| GPU (v1.1, darwin only) | utilization % | IOKit `IOAccelerator` `PerformanceStatistics` "Device Utilization %" (M14, decision 46) | none |
 | Temperatures | per sensor: label, °C | Not in v1. v1.1: the IOHID event system through `dlopen`, aggregated to CPU and GPU (M15, decisions 44, 45) | `/sys/class/hwmon/*` |
 
 Collection rules:
@@ -132,7 +133,7 @@ Field names are `snake_case`, and timestamps are RFC 3339 UTC. Abbreviated examp
 }
 ```
 
-The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps` and `_pps`) are `null`. `temps` is `null` when there are no sensors, which on darwin is always in v1. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`) to its error message, and is `{}` when every group is fine.
+The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. As built in M14 (decision 46), darwin adds a top-level `"darwin": {"gpu": {"utilization_pct": 23}}`, with `gpu` null when that group failed. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps` and `_pps`) are `null`. `temps` is `null` when there are no sensors, which on darwin is always in v1. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`, and `gpu` on darwin) to its error message, and is `{}` when every group is fine.
 
 ### Prometheus exposition
 
@@ -152,6 +153,7 @@ Metric names use the `vitals_` prefix with base units, and the exposition is wri
 - `vitals_network_{receive,transmit}_{bytes,packets}_per_second{iface}` and `vitals_network_{receive,transmit}_bytes_total{iface}` (counters)
 - `vitals_temperature_celsius{sensor}`, `vitals_load_average{period="1m|5m|15m"}`, `vitals_uptime_seconds`, `vitals_boot_time_seconds`
 - `vitals_collector_error{group}` (0 or 1), and `vitals_build_info{version,commit}` set to 1
+- As built in M14 (decision 46): `vitals_gpu_utilization_ratio` on darwin, and `gpu` in `vitals_collector_error` there only
 - As built in M9 (decision 35): also `vitals_host_info{hostname,os,os_version,kernel,arch}` set to 1, and the disk rates' `device` is the physical device, written once per device
 
 A rate that is unknown on this sample is omitted, because Prometheus has no null. Ratios run 0 to 1, not 0 to 100.

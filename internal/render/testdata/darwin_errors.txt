@@ -5,6 +5,9 @@ CPU unavailable: host_processor_info: (os/kern) failure
 
 Memory unavailable: host_statistics64: (os/kern) failure
 
+GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to
+  read
+
 Disks
   statfs "/Volumes/Backup": input/output error
   MOUNT       USED       SIZE   USE%         READ        WRITE

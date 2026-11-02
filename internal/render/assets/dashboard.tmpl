@@ -66,6 +66,20 @@
 {{- end}}
 </details>
 </section>
+{{- if .S.Darwin}}
+<section aria-labelledby="gpu">
+<details data-card="gpu" open>
+<summary><h2 id="gpu">GPU</h2></summary>
+{{- with index .S.Errors "gpu"}}
+<p class="error">GPU unavailable: {{.}}</p>
+{{- end}}
+{{- if or .GPUNow (not (index .S.Errors "gpu"))}}
+<div class="now"><span class="big num">{{pct .GPUNow}}</span>
+{{- template "spark" .GPUSpark}}</div>
+{{- end}}
+</details>
+</section>
+{{- end}}
 <section aria-labelledby="disks">
 <details data-card="disks" open>
 <summary><h2 id="disks">Disks</h2></summary>

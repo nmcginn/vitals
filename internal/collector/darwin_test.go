@@ -170,4 +170,30 @@ func TestDarwinCollect(t *testing.T) {
 			}
 		}
 	})
+	t.Run("the GPU group reads 0 to 100, or fails without a GPU reading, as on a CI VM", func(t *testing.T) {
+		// A VM's paravirtual GPU may have no IOAccelerator, or one without
+		// statistics, so a failed group passes as long as it says why and the
+		// other groups were served.
+		raw, err := c.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		gerr := raw.Errors[GroupGPU]
+		switch {
+		case raw.GPU != nil && gerr != nil:
+			t.Errorf("gpu is %+v and failed with %v; want one or the other", raw.GPU, gerr)
+		case raw.GPU != nil:
+			if u := raw.GPU.UtilizationPct; !(u >= 0 && u <= 100) {
+				t.Errorf("gpu utilization %v%%, want 0 to 100", u)
+			}
+			t.Logf("gpu utilization %v%%", raw.GPU.UtilizationPct)
+		case gerr == nil:
+			t.Error("gpu is nil without an error")
+		default:
+			t.Logf("no gpu reading: %v", gerr)
+		}
+		if raw.CPU == nil || raw.Memory == nil || raw.Host == nil {
+			t.Errorf("the GPU group took others down with it: %+v", raw.Errors)
+		}
+	})
 }

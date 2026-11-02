@@ -62,3 +62,4 @@ vitals_collector_error{group="memory"} 1
 vitals_collector_error{group="disks"} 1
 vitals_collector_error{group="network"} 0
 vitals_collector_error{group="temps"} 0
+vitals_collector_error{group="gpu"} 1

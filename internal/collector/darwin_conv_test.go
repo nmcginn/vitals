@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -371,4 +372,53 @@ func TestDiskIOFromShim(t *testing.T) {
 			t.Errorf("got %+v, want nil", got)
 		}
 	})
+}
+
+func TestGPUFromAccelerators(t *testing.T) {
+	// The shim's copies of what `ioreg -r -c IOAccelerator` shows: an Apple
+	// Silicon AGXAccelerator's PerformanceStatistics carries "Device
+	// Utilization %" beside "Renderer" and "Tiler Utilization %", as an
+	// integer the shim reads as a double.
+	busy := gpuReading{HasStats: true, HasUtil: true, Util: 37}
+	for _, tc := range []struct {
+		name string
+		n    int
+		rs   []gpuReading
+		want *GPU
+		err  string
+	}{
+		{"one accelerator's Device Utilization % is the reading", 1, []gpuReading{busy}, &GPU{UtilizationPct: 37}, ""},
+		{"an idle GPU is 0, a real reading", 1, []gpuReading{{HasStats: true, HasUtil: true, Util: 0}}, &GPU{UtilizationPct: 0}, ""},
+		{"a GPU at 100% is in range", 1, []gpuReading{{HasStats: true, HasUtil: true, Util: 100}}, &GPU{UtilizationPct: 100}, ""},
+		{"two GPUs report the busier one", 2, []gpuReading{{HasStats: true, HasUtil: true, Util: 5}, busy}, &GPU{UtilizationPct: 37}, ""},
+		{"a second GPU without statistics doesn't hide the first one's reading", 2, []gpuReading{busy, {}}, &GPU{UtilizationPct: 37}, ""},
+		{"a missing key is a failed group, never 0", 1, []gpuReading{{HasStats: true}},
+			nil, `IOAccelerator 1's PerformanceStatistics has no "Device Utilization %"`},
+		{"an accelerator without PerformanceStatistics is a failed group", 1, []gpuReading{{}},
+			nil, "IOAccelerator 1 has no PerformanceStatistics"},
+		{"a value over 100 is a failed group, never clamped", 1, []gpuReading{{HasStats: true, HasUtil: true, Util: 4294967295}},
+			nil, `IOAccelerator 1 reports "Device Utilization %" of 4.294967295e+09, outside 0 to 100`},
+		{"a negative value is a failed group", 1, []gpuReading{{HasStats: true, HasUtil: true, Util: -1}},
+			nil, `IOAccelerator 1 reports "Device Utilization %" of -1, outside 0 to 100`},
+		{"NaN is a failed group", 1, []gpuReading{{HasStats: true, HasUtil: true, Util: math.NaN()}},
+			nil, `IOAccelerator 1 reports "Device Utilization %" of NaN, outside 0 to 100`},
+		{"with no good reading, the first accelerator's problem is the one named", 2, []gpuReading{{}, {HasStats: true}},
+			nil, "IOAccelerator 1 has no PerformanceStatistics"},
+		{"no accelerator at all is a failed group", 0, nil,
+			nil, "the IORegistry lists no IOAccelerator, so there is no GPU to read"},
+		{"a failed registry lookup is a failed group", -1, nil,
+			nil, "listing IOAccelerator services in the IORegistry failed"},
+		{"more accelerators than the shim holds is a failed group", 9, make([]gpuReading, 8),
+			nil, "the IORegistry lists 9 IOAccelerator services, more than the shim's 8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := gpuFromAccelerators(tc.n, tc.rs)
+			if tc.err == "" && err != nil || tc.err != "" && (err == nil || err.Error() != tc.err) {
+				t.Errorf("error %v, want %q", err, tc.err)
+			}
+			if (got == nil) != (tc.want == nil) || got != nil && *got != *tc.want {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
 }

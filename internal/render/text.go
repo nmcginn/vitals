@@ -34,6 +34,7 @@ func Text(s *sampler.Snapshot) []byte {
 	w.host(s)
 	w.cpu(s)
 	w.memory(s)
+	w.gpu(s)
 	w.disks(s)
 	w.network(s)
 	w.temps(s)
@@ -80,6 +81,20 @@ func (w *textWriter) cpu(s *sampler.Snapshot) {
 	w.flow("", "  ", " · ", "CPU "+humanPct(c.UsagePct), model, count)
 	w.problem("  ", "", s.Errors["cpu"])
 	w.cores(cores(c))
+}
+
+// gpu is a darwin group, so elsewhere there is no line at all.
+func (w *textWriter) gpu(s *sampler.Snapshot) {
+	d := s.Darwin
+	if d == nil {
+		return
+	}
+	w.blank()
+	if err := s.Errors["gpu"]; d.GPU == nil && err != "" {
+		w.problem("", "GPU unavailable: ", err)
+		return
+	}
+	w.line("GPU " + humanPct(gpuNow(s)))
 }
 
 func (w *textWriter) memory(s *sampler.Snapshot) {

@@ -112,6 +112,7 @@ func TestTextContent(t *testing.T) {
 		for _, want := range []string{
 			"CPU unavailable: host_processor_info: (os/kern) failure\n",
 			"Memory unavailable: host_statistics64: (os/kern) failure\n",
+			"GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to\n  read\n",
 			"Disks\n  statfs \"/Volumes/Backup\": input/output error\n  MOUNT",
 		} {
 			if !strings.Contains(out, want) {
@@ -151,6 +152,23 @@ func TestTextContent(t *testing.T) {
 			if !strings.Contains(out, want) {
 				t.Errorf("lacks %q:\n%s", want, out)
 			}
+		}
+	})
+
+	t.Run("darwin has a GPU line between memory and disks, and linux has none", func(t *testing.T) {
+		if out := string(Text(darwinFull())); !strings.Contains(out, "\n\nGPU 23.0%\n\nDisks\n") {
+			t.Errorf("lacks the GPU line:\n%s", out)
+		}
+		if out := string(Text(linuxPartial())); strings.Contains(out, "GPU") {
+			t.Errorf("linux output mentions a GPU:\n%s", out)
+		}
+	})
+
+	t.Run("an unknown GPU reading without an error is —, not 0", func(t *testing.T) {
+		s := darwinFull()
+		s.Darwin.GPU = nil
+		if out := string(Text(s)); !strings.Contains(out, "\nGPU —\n") {
+			t.Errorf("lacks GPU —:\n%s", out)
 		}
 	})
 

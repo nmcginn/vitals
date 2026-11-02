@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: v1 is built; M0 to M12 have all merged, and M13 is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
-- Next up: the v1.1 sensors, M14 to M16.
-- Open PRs waiting on review: M13, idle interfaces hidden on the dashboard and in text.
+- Current: v1 is built and M13 has merged; M14 (GPU utilisation) is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
+- Next up: M15, SoC temperatures on darwin.
+- Open PRs waiting on review: M14, GPU utilisation on darwin.
 
 ## Open questions for the maintainer
 
@@ -27,14 +27,6 @@ None.
 ---
 
 ## Open
-
-### M14: GPU utilisation on darwin (v1.1)
-
-- [ ] **The dashboard shows how busy the GPU is, from public IOKit.**
-  *Needs:* M3.
-  The `Device Utilization %` gauge from the `PerformanceStatistics` dictionary of the `IOAccelerator` registry entry, read through the shim with public IOKit calls (decision 44 prefers a public route). It's darwin-only, so it lives in a `"darwin"` sub-object in JSON (the convention) and is omitted on Linux. A new `gpu` group gets its own entry in `errors` and in `vitals_collector_error`. It appears on the dashboard, in text, and in Prometheus as a 0 to 1 ratio. Record the JSON and metric names in a decision.
-
-  *Acceptance:* untagged conversion tests from captured dictionaries: a normal reading, a missing key (`null`, never 0), a value outside 0 to 100 (`null`), and no accelerator at all (group error, other groups served). Goldens for all four formats with and without the field. The darwin integration test accepts a value from 0 to 100 or no accelerator, since the CI VM may have none. `make budget` still passes with any new allocations counted. If the property turns out to be missing or meaningless on current macOS, stop and raise an open question rather than reaching for IOReport here. *(maintainer)* it tracks Activity Monitor's GPU History under load.
 
 ### M15: SoC temperatures on darwin (v1.1)
 
@@ -70,6 +62,7 @@ None.
 - **M11: Packaging.** `make build` (darwin only on a Mac, `MACOSX_DEPLOYMENT_TARGET=13.0`), `dist-check` in `make check` (static Linux binaries, `otool -L`, `plutil -lint`, `systemd-analyze verify`, `-version`), `contrib/com.vitals.plist` and `contrib/vitals.service`, and the README's install and security notes (decisions 38, 39).
 - **M12: Budget.** Allocation and growth tests for the tick and the renderers in `make budget` (part of `make check`), benchmarks for collect, tick, and each renderer, the dashboard's sparklines downsampled in place, and `make soak` (decision 40). *(maintainer)* The one-hour idle check on the Mini is still to run: `SOAK_MINUTES=60 make soak`.
 - **M13: Idle interfaces.** `shownInterfaces` in `render/shown.go` drops interfaces with zero rx and tx totals from the dashboard and text, and JSON and Prometheus list every one (decision 41). *(maintainer)* the Mini's network card shows only the ports in use.
+- **M14: GPU utilisation.** The `gpu` group from the `IOAccelerator` `PerformanceStatistics` "Device Utilization %" through the shim, `darwin.gpu.utilization_pct` in JSON, `vitals_gpu_utilization_ratio`, a GPU card with a sparkline, and a `GPU` line in text (decision 46). *(maintainer)* it tracks Activity Monitor's GPU History under load.
 
 ---
 

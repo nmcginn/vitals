@@ -40,6 +40,9 @@ vitals_cpu_core_info{cpu="6",kind="E"} 1
 vitals_cpu_core_info{cpu="7",kind="E"} 1
 vitals_cpu_core_info{cpu="8",kind="E"} 1
 vitals_cpu_core_info{cpu="9",kind="E"} 1
+# HELP vitals_gpu_utilization_ratio Busy share of the GPU, 0 to 1, as the driver reports it.
+# TYPE vitals_gpu_utilization_ratio gauge
+vitals_gpu_utilization_ratio 0.23
 # HELP vitals_memory_total_bytes Physical memory.
 # TYPE vitals_memory_total_bytes gauge
 vitals_memory_total_bytes 17179869184
@@ -122,3 +125,4 @@ vitals_collector_error{group="memory"} 0
 vitals_collector_error{group="disks"} 0
 vitals_collector_error{group="network"} 0
 vitals_collector_error{group="temps"} 0
+vitals_collector_error{group="gpu"} 0

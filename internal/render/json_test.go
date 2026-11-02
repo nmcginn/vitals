@@ -93,6 +93,12 @@ func TestJSONFormatting(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed GPU group is darwin.gpu null, never 0", func(t *testing.T) {
+		if b := mustJSON(t, darwinErrors(), false); !bytes.Contains(b, []byte(`"darwin":{"gpu":null}`)) {
+			t.Errorf("output lacks a null gpu:\n%s", b)
+		}
+	})
+
 	t.Run("platform-only fields are omitted on linux", func(t *testing.T) {
 		if b := mustJSON(t, linuxPartial(), false); bytes.Contains(b, []byte(`"darwin"`)) {
 			t.Errorf("linux snapshot has a darwin object:\n%s", b)
@@ -116,6 +122,9 @@ const planExample = `{
 // documentedAdditions are the keys PLAN says the example abbreviates. Any
 // other key in the output is an undocumented change to the shape.
 var documentedAdditions = []string{
+	"darwin",
+	"darwin.gpu",
+	"darwin.gpu.utilization_pct",
 	"disks[].free_bytes",
 	"host.boot_time",
 	"host.os_version",

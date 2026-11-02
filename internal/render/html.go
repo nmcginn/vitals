@@ -91,6 +91,10 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 
 	cpu := cpuSeries(history)
 	v.CPUSpark = spark{Path: sparkPath(cpu, 100), Title: v.title("CPU usage", "now "+humanPct(cpuNow(s)))}
+	if s.Darwin != nil {
+		v.GPUNow = gpuNow(s)
+		v.GPUSpark = spark{Path: sparkPath(gpuSeries(history), 100), Title: v.title("GPU usage", "now "+humanPct(v.GPUNow))}
+	}
 	mem := memSeries(history)
 	v.MemSpark = spark{Path: sparkPath(mem, 100), Title: v.title("Memory used", "now "+humanPct(memPct(s.Memory)))}
 	v.Network = shownInterfaces(s.Network)
@@ -124,6 +128,8 @@ type dashboard struct {
 	Window      string // how far back the sparklines reach: "15 min"
 	Cores       []core
 	CPUSpark    spark
+	GPUNow      *float64 // darwin only
+	GPUSpark    spark
 	MemSpark    spark
 	Network     []sampler.Interface // S.Network without its idle interfaces
 	NetSparks   []netSpark          // one per Network entry, in the same order
@@ -207,6 +213,14 @@ func cpuNow(s *sampler.Snapshot) *float64 {
 	return s.CPU.UsagePct
 }
 
+// gpuNow is the GPU's utilization, nil off darwin or when the group failed.
+func gpuNow(s *sampler.Snapshot) *float64 {
+	if s.Darwin == nil || s.Darwin.GPU == nil {
+		return nil
+	}
+	return &s.Darwin.GPU.UtilizationPct
+}
+
 // memPct is used memory as a percentage of total, nil when unknown.
 func memPct(m *collector.Memory) *float64 {
 	if pct := memUsedPct(m); !math.IsNaN(pct) {
@@ -229,6 +243,10 @@ func memUsedPct(m *collector.Memory) float64 {
 
 func cpuSeries(h []*sampler.Snapshot) series {
 	return downsample(len(h), func(i int) float64 { return known(cpuNow(h[i])) })
+}
+
+func gpuSeries(h []*sampler.Snapshot) series {
+	return downsample(len(h), func(i int) float64 { return known(gpuNow(h[i])) })
 }
 
 func memSeries(h []*sampler.Snapshot) series {
