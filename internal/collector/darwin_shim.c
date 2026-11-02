@@ -9,6 +9,7 @@
 #include <IOKit/IOKitLib.h>
 #include <IOKit/storage/IOBlockStorageDriver.h>
 #include <mach/mach.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <net/if.h>
 #include <net/if_mib.h>
@@ -357,5 +358,123 @@ int vitals_gpus(struct vitals_gpu *out, int max) {
 		n++;
 	}
 	IOObjectRelease(iter);
+	return n;
+}
+
+// The private IOHID event system, the one route to the SoC's temperature
+// sensors without root (decision 44). No header declares these, so the
+// prototypes are written out here, every object as a CFTypeRef. They are
+// resolved once with dlsym from the IOKit already linked, so a macOS that
+// drops one fails the temps group instead of the whole binary at launch.
+typedef CFTypeRef (*hid_client_create_fn)(CFAllocatorRef);
+typedef int (*hid_client_set_matching_fn)(CFTypeRef client, CFDictionaryRef matching);
+typedef CFArrayRef (*hid_client_copy_services_fn)(CFTypeRef client);
+typedef CFTypeRef (*hid_service_copy_property_fn)(CFTypeRef service, CFStringRef key);
+typedef CFTypeRef (*hid_service_copy_event_fn)(CFTypeRef service, int64_t type, int32_t options, int64_t timestamp);
+typedef double (*hid_event_get_float_fn)(CFTypeRef event, uint32_t field);
+
+// kIOHIDEventTypeTemperature, and its value field, IOHIDEventFieldBase(type).
+#define HID_EVENT_TEMPERATURE 15
+#define HID_FIELD_TEMPERATURE ((uint32_t)HID_EVENT_TEMPERATURE << 16)
+// kHIDPage_AppleVendor and kHIDUsage_AppleVendor_TemperatureSensor.
+#define HID_PAGE_APPLE_VENDOR 0xff00
+#define HID_USAGE_TEMPERATURE 5
+
+static struct {
+	hid_client_set_matching_fn set_matching;
+	hid_client_copy_services_fn copy_services;
+	hid_service_copy_property_fn copy_property;
+	hid_service_copy_event_fn copy_event;
+	hid_event_get_float_fn get_float;
+	CFTypeRef client;
+} hid;
+
+// ISO C has no cast from dlsym's void * to a function pointer; copying the
+// bytes is the form POSIX blesses.
+static int resolve(void *lib, const char *name, void *fn, size_t size, char *missing, int missing_size) {
+	void *sym = dlsym(lib, name);
+	if (sym == NULL) {
+		copy_str(missing, (size_t)missing_size, name);
+		return -2;
+	}
+	memcpy(fn, &sym, size);
+	return 0;
+}
+
+int vitals_temps_open(char *missing, int size) {
+	missing[0] = '\0';
+	void *lib = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_LAZY | RTLD_LOCAL);
+	if (lib == NULL) {
+		return -1;
+	}
+	hid_client_create_fn create = NULL;
+	if (resolve(lib, "IOHIDEventSystemClientCreate", &create, sizeof create, missing, size) != 0 ||
+	    resolve(lib, "IOHIDEventSystemClientSetMatching", &hid.set_matching, sizeof hid.set_matching, missing, size) != 0 ||
+	    resolve(lib, "IOHIDEventSystemClientCopyServices", &hid.copy_services, sizeof hid.copy_services, missing, size) != 0 ||
+	    resolve(lib, "IOHIDServiceClientCopyProperty", &hid.copy_property, sizeof hid.copy_property, missing, size) != 0 ||
+	    resolve(lib, "IOHIDServiceClientCopyEvent", &hid.copy_event, sizeof hid.copy_event, missing, size) != 0 ||
+	    resolve(lib, "IOHIDEventGetFloatValue", &hid.get_float, sizeof hid.get_float, missing, size) != 0) {
+		return -2;
+	}
+	// The handle stays open: the function pointers live as long as it does.
+	CFTypeRef client = create(kCFAllocatorDefault);
+	if (client == NULL) {
+		return -3;
+	}
+	int page = HID_PAGE_APPLE_VENDOR, usage = HID_USAGE_TEMPERATURE;
+	CFNumberRef page_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &page);
+	CFNumberRef usage_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage);
+	CFDictionaryRef matching = NULL;
+	if (page_num != NULL && usage_num != NULL) {
+		const void *keys[2] = {CFSTR("PrimaryUsagePage"), CFSTR("PrimaryUsage")};
+		const void *values[2] = {page_num, usage_num};
+		matching = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	}
+	if (page_num != NULL) {
+		CFRelease(page_num);
+	}
+	if (usage_num != NULL) {
+		CFRelease(usage_num);
+	}
+	if (matching == NULL) {
+		CFRelease(client);
+		return -3;
+	}
+	hid.set_matching(client, matching);
+	CFRelease(matching);
+	hid.client = client;
+	return 0;
+}
+
+static void copy_temp(CFTypeRef service, struct vitals_temp *out) {
+	out->name[0] = '\0';
+	out->has_event = 0;
+	out->celsius = 0;
+	CFTypeRef name = hid.copy_property(service, CFSTR("Product"));
+	if (name != NULL) {
+		if (CFGetTypeID(name) != CFStringGetTypeID() ||
+		    !CFStringGetCString((CFStringRef)name, out->name, sizeof out->name, kCFStringEncodingUTF8)) {
+			out->name[0] = '\0';
+		}
+		CFRelease(name);
+	}
+	CFTypeRef event = hid.copy_event(service, HID_EVENT_TEMPERATURE, 0, 0);
+	if (event != NULL) {
+		out->celsius = hid.get_float(event, HID_FIELD_TEMPERATURE);
+		out->has_event = 1;
+		CFRelease(event);
+	}
+}
+
+int vitals_temps(struct vitals_temp *out, int max) {
+	CFArrayRef services = hid.copy_services(hid.client);
+	if (services == NULL) {
+		return 0;
+	}
+	int n = (int)CFArrayGetCount(services);
+	for (int i = 0; i < n && i < max; i++) {
+		copy_temp(CFArrayGetValueAtIndex(services, i), &out[i]);
+	}
+	CFRelease(services);
 	return n;
 }

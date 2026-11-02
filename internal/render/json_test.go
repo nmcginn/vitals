@@ -131,6 +131,10 @@ var documentedAdditions = []string{
 	"memory.darwin.active_bytes",
 	"memory.darwin.file_backed_bytes",
 	"memory.darwin.inactive_bytes",
+	// The example's temps is null, the v1 darwin case; PLAN's table gives a
+	// sensor's label and °C, which darwin fills since M15.
+	"temps[].celsius",
+	"temps[].label",
 }
 
 // keyPaths lists every object key in a decoded JSON value as a dotted path,
@@ -188,7 +192,9 @@ func TestJSONShape(t *testing.T) {
 	})
 
 	t.Run("temps is null and errors is {} when there are no sensors and no failures", func(t *testing.T) {
-		b := mustJSON(t, darwinFull(), false)
+		s := darwinFull()
+		s.Temps = nil
+		b := mustJSON(t, s, false)
 		if !bytes.Contains(b, []byte(`"temps":null`)) || !bytes.Contains(b, []byte(`"errors":{}`)) {
 			t.Errorf("got %s", b)
 		}

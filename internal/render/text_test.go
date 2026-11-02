@@ -173,7 +173,9 @@ func TestTextContent(t *testing.T) {
 	})
 
 	t.Run("no sensors and no temps error means no temperatures section", func(t *testing.T) {
-		if out := string(Text(darwinFull())); strings.Contains(out, "Temperatures") {
+		s := darwinFull()
+		s.Temps = nil
+		if out := string(Text(s)); strings.Contains(out, "Temperatures") {
 			t.Errorf("a temperatures section with nothing in it:\n%s", out)
 		}
 	})

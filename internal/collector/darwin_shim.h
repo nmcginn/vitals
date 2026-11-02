@@ -100,6 +100,16 @@ struct vitals_gpu {
 	double util;       // "Device Utilization %", when has_util is 1
 };
 
+// More temperature sensors than any Mac has; an M1 lists about 40.
+#define VITALS_MAX_TEMPS 256
+
+// One IOHID temperature service: its name and current reading.
+struct vitals_temp {
+	char name[64];     // the service's "Product" property, "" when missing
+	int32_t has_event; // 0 when the service gave no temperature event
+	double celsius;    // the event's value, when has_event is 1
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -142,5 +152,17 @@ int vitals_disk_io(const char *bsd_name, struct vitals_disk_io *out);
 // Copies up to max IOAccelerator services' utilization into out. Returns the
 // number of services, which may exceed max, or -1 if matching them failed.
 int vitals_gpus(struct vitals_gpu *out, int max);
+
+// Opens the private IOHID event system once (decision 44): dlopen of IOKit,
+// dlsym of each function the readings need, and one client matching Apple's
+// vendor temperature sensors. Returns 0, -1 if dlopen failed, -2 if a symbol
+// is missing (its name is copied into missing), or -3 if no client could be
+// created. Call it once, before vitals_temps.
+int vitals_temps_open(char *missing, int size);
+
+// Copies up to max temperature services' readings into out. Returns the number
+// of services, which may exceed max; 0 when the system lists none, as in a VM.
+// Only call it after vitals_temps_open returned 0.
+int vitals_temps(struct vitals_temp *out, int max);
 
 #endif

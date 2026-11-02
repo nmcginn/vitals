@@ -82,6 +82,12 @@ vitals_network_receive_bytes_total{iface="gif0"} 0
 # TYPE vitals_network_transmit_bytes_total counter
 vitals_network_transmit_bytes_total{iface="en0"} 12001221
 vitals_network_transmit_bytes_total{iface="gif0"} 0
+# HELP vitals_temperature_celsius Sensor temperature in degrees Celsius.
+# TYPE vitals_temperature_celsius gauge
+vitals_temperature_celsius{sensor="CPU mean"} 46.8125
+vitals_temperature_celsius{sensor="CPU max"} 52.25
+vitals_temperature_celsius{sensor="GPU mean"} 41.5
+vitals_temperature_celsius{sensor="GPU max"} 43
 # HELP vitals_collector_error 1 when the group failed on this sample, 0 otherwise.
 # TYPE vitals_collector_error gauge
 vitals_collector_error{group="host"} 0

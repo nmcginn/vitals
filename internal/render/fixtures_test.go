@@ -14,7 +14,8 @@ var sampledAt = time.Date(2026, 10, 21, 14, 2, 6, 0, time.UTC)
 func p[T any](v T) *T { return &v }
 
 // darwinFull is a second sample on an M4 Mac Mini: every group, every rate,
-// and an interface that has never moved a byte, as most of a Mac's do.
+// an interface that has never moved a byte, as most of a Mac's do, and the
+// CPU and GPU temperature aggregates (decision 45).
 func darwinFull() *sampler.Snapshot {
 	boot := time.Date(2026, 10, 11, 14, 2, 6, 0, time.UTC)
 	return &sampler.Snapshot{
@@ -53,6 +54,10 @@ func darwinFull() *sampler.Snapshot {
 		}, {
 			Name: "gif0", RxBps: p(0.0), TxBps: p(0.0), RxPps: p(0.0), TxPps: p(0.0),
 		}},
+		Temps: []collector.Temp{
+			{Label: "CPU mean", Celsius: 46.8125}, {Label: "CPU max", Celsius: 52.25},
+			{Label: "GPU mean", Celsius: 41.5}, {Label: "GPU max", Celsius: 43},
+		},
 		Darwin: &sampler.Darwin{GPU: &collector.GPU{UtilizationPct: 23}},
 		Errors: map[string]string{},
 	}
@@ -110,17 +115,18 @@ func linuxPartial() *sampler.Snapshot {
 	}
 }
 
-// darwinErrors is a darwin sample where CPU, memory, and the GPU failed, one
-// mount couldn't be read, and the rest is fine.
+// darwinErrors is a darwin sample where CPU, memory, the GPU, and the
+// temperatures failed, one mount couldn't be read, and the rest is fine.
 func darwinErrors() *sampler.Snapshot {
 	s := darwinFull()
-	s.CPU, s.Memory = nil, nil
+	s.CPU, s.Memory, s.Temps = nil, nil, nil
 	s.Darwin = &sampler.Darwin{}
 	s.Errors = map[string]string{
 		"cpu":    "host_processor_info: (os/kern) failure",
 		"memory": "host_statistics64: (os/kern) failure",
 		"disks":  `statfs "/Volumes/Backup": input/output error`,
 		"gpu":    "the IORegistry lists no IOAccelerator, so there is no GPU to read",
+		"temps":  "the private IOHID function IOHIDServiceClientCopyEvent is missing from this macOS; check for a newer vitals",
 	}
 	return s
 }

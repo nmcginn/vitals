@@ -18,3 +18,9 @@ Disks
 Network
   IFACE      RECEIVE         SEND   RX TOTAL   TX TOTAL
   en0     12.5 KiB/s    3.3 KiB/s   93.7 MiB   11.4 MiB
+
+Temperatures
+  CPU mean   46.8 °C
+  CPU max    52.2 °C
+  GPU mean   41.5 °C
+  GPU max    43.0 °C

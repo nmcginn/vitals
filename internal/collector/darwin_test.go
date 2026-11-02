@@ -196,4 +196,35 @@ func TestDarwinCollect(t *testing.T) {
 			t.Errorf("the GPU group took others down with it: %+v", raw.Errors)
 		}
 	})
+	t.Run("temperatures are absent, or CPU and GPU aggregates between 0 and 150 °C, and the rest are served", func(t *testing.T) {
+		// A CI VM has no SoC sensors, so no temps passes. Every service's name
+		// is logged, so `go test -v -run TestDarwinCollect` on a Mac shows
+		// what decision 45's mapping had to choose from.
+		d := c.(*darwin)
+		if d.hidErr == nil {
+			n, rs := d.hidSensors()
+			t.Logf("%d IOHID temperature services", n)
+			for _, r := range rs {
+				t.Logf("  %q: event %v, %.2f °C", r.Name, r.HasEvent, r.Celsius)
+			}
+		}
+		raw, err := c.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if terr := raw.Errors[GroupTemps]; terr != nil {
+			// The symbols exist on every macOS the binary supports, so an
+			// error here is a regression worth seeing, not a VM quirk.
+			t.Errorf("temps error %v", terr)
+		}
+		for _, tmp := range raw.Temps {
+			if !(tmp.Celsius > 0 && tmp.Celsius <= 150) {
+				t.Errorf("%s is %v °C, want above 0 and at most 150", tmp.Label, tmp.Celsius)
+			}
+			t.Logf("%s: %.1f °C", tmp.Label, tmp.Celsius)
+		}
+		if raw.CPU == nil || raw.Memory == nil || raw.Host == nil {
+			t.Errorf("the temps group took others down with it: %+v", raw.Errors)
+		}
+	})
 }
