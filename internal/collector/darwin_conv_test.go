@@ -422,3 +422,107 @@ func TestGPUFromAccelerators(t *testing.T) {
 		})
 	}
 }
+
+// m1Sensors is an M1's IOHID temperature services as the shim copies them:
+// each one's "Product" name and reading. The names are the ones macmon
+// matches and those published from M1 machines beside them. They were not
+// captured on the maintainer's Mini.
+var m1Sensors = []hidTemp{
+	{Name: "PMU tdie1", HasEvent: true, Celsius: 41.2},
+	{Name: "PMU tdev1", HasEvent: true, Celsius: 33.0},
+	{Name: "pACC MTR Temp Sensor0", HasEvent: true, Celsius: 44.5},
+	{Name: "pACC MTR Temp Sensor1", HasEvent: true, Celsius: 47.5},
+	{Name: "eACC MTR Temp Sensor0", HasEvent: true, Celsius: 38.0},
+	{Name: "GPU MTR Temp Sensor1", HasEvent: true, Celsius: 36.25},
+	{Name: "GPU MTR Temp Sensor4", HasEvent: true, Celsius: 37.75},
+	{Name: "SOC MTR Temp Sensor0", HasEvent: true, Celsius: 40.0},
+	{Name: "ANE MTR Temp Sensor1", HasEvent: true, Celsius: 35.0},
+	{Name: "NAND CH0 temp", HasEvent: true, Celsius: 30.0},
+	{Name: "gas gauge battery", HasEvent: true, Celsius: 29.0},
+}
+
+func TestTempsFromHID(t *testing.T) {
+	with := func(extra ...hidTemp) []hidTemp { return append(slices.Clone(m1Sensors), extra...) }
+	m1 := []Temp{
+		{Label: "CPU mean", Celsius: 130.0 / 3}, {Label: "CPU max", Celsius: 47.5},
+		{Label: "GPU mean", Celsius: 37}, {Label: "GPU max", Celsius: 37.75},
+	}
+	for _, tc := range []struct {
+		name string
+		n    int
+		rs   []hidTemp
+		want []Temp
+		err  string
+	}{
+		{"CPU and GPU die sensors give each one's mean and max, and the rest are left out",
+			len(m1Sensors), m1Sensors, m1, ""},
+		{"no matching sensors is no temps and no error, as on Linux without hwmon",
+			2, []hidTemp{{Name: "PMU tdie1", HasEvent: true, Celsius: 41}, {Name: "NAND CH0 temp", HasEvent: true, Celsius: 30}}, nil, ""},
+		{"no sensors at all, as in a VM, is no temps and no error", 0, nil, nil, ""},
+		{"a sensor reading 0 is dropped, not averaged in",
+			len(m1Sensors) + 1, with(hidTemp{Name: "pACC MTR Temp Sensor9", HasEvent: true, Celsius: 0}), m1, ""},
+		{"a negative reading is dropped",
+			len(m1Sensors) + 1, with(hidTemp{Name: "eACC MTR Temp Sensor3", HasEvent: true, Celsius: -127}), m1, ""},
+		{"a reading over 150 °C is dropped, not taken as the max",
+			len(m1Sensors) + 1, with(hidTemp{Name: "GPU MTR Temp Sensor2", HasEvent: true, Celsius: 3276.7}), m1, ""},
+		{"NaN is dropped",
+			len(m1Sensors) + 1, with(hidTemp{Name: "GPU MTR Temp Sensor2", HasEvent: true, Celsius: math.NaN()}), m1, ""},
+		{"a sensor that gave no event is dropped",
+			len(m1Sensors) + 1, with(hidTemp{Name: "pACC MTR Temp Sensor9"}), m1, ""},
+		{"150 °C itself is in range",
+			1, []hidTemp{{Name: "GPU MTR Temp Sensor1", HasEvent: true, Celsius: 150}},
+			[]Temp{{Label: "GPU mean", Celsius: 150}, {Label: "GPU max", Celsius: 150}}, ""},
+		{"a CPU without good readings leaves just the GPU rows",
+			2, []hidTemp{{Name: "pACC MTR Temp Sensor0", HasEvent: true, Celsius: 0}, {Name: "GPU MTR Temp Sensor1", HasEvent: true, Celsius: 40}},
+			[]Temp{{Label: "GPU mean", Celsius: 40}, {Label: "GPU max", Celsius: 40}}, ""},
+		{"die sensors that all read out of range are a failed group, not a silent null",
+			2, []hidTemp{{Name: "pACC MTR Temp Sensor0", HasEvent: true, Celsius: 0}, {Name: "GPU MTR Temp Sensor1"}},
+			nil, "none of the 2 CPU and GPU temperature sensors gave a reading above 0 and at most 150 °C"},
+		{"names match by prefix, so a name that only contains one doesn't count",
+			1, []hidTemp{{Name: "PMU pACC MTR Temp Sensor0", HasEvent: true, Celsius: 40}}, nil, ""},
+		{"more sensors than the shim holds is a failed group",
+			257, make([]hidTemp, 256), nil, "the IOHID event system lists 257 temperature sensors, more than the shim's 256"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tempsFromHID(tc.n, tc.rs)
+			if tc.err == "" && err != nil || tc.err != "" && (err == nil || err.Error() != tc.err) {
+				t.Errorf("error %v, want %q", err, tc.err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+			for i := range got {
+				if got[i].Label != tc.want[i].Label || math.Abs(got[i].Celsius-tc.want[i].Celsius) > 1e-9 {
+					t.Errorf("got %+v, want %+v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestHIDOpenError(t *testing.T) {
+	t.Run("an opened event system is no error", func(t *testing.T) {
+		if err := hidOpenError(0, ""); err != nil {
+			t.Errorf("err = %v", err)
+		}
+	})
+	for _, tc := range []struct {
+		name    string
+		rc      int
+		missing string
+		want    string
+	}{
+		{"a missing private symbol is named, so the error says what this macOS removed", -2, "IOHIDServiceClientCopyEvent",
+			"the private IOHID function IOHIDServiceClientCopyEvent is missing from this macOS; check for a newer vitals"},
+		{"IOKit failing to open is an error, not a crash", -1, "",
+			"dlopen of IOKit failed, so the IOHID event system can't be reached"},
+		{"no event system client is an error", -3, "",
+			"creating an IOHID event system client failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := hidOpenError(tc.rc, tc.missing); err == nil || err.Error() != tc.want {
+				t.Errorf("err = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}

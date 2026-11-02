@@ -96,7 +96,24 @@
       "tx_total_bytes": 0
     }
   ],
-  "temps": null,
+  "temps": [
+    {
+      "label": "CPU mean",
+      "celsius": 46.8125
+    },
+    {
+      "label": "CPU max",
+      "celsius": 52.25
+    },
+    {
+      "label": "GPU mean",
+      "celsius": 41.5
+    },
+    {
+      "label": "GPU max",
+      "celsius": 43
+    }
+  ],
   "darwin": {
     "gpu": {
       "utilization_pct": 23

@@ -169,7 +169,7 @@ func TestPromValues(t *testing.T) {
 				got[smp.labels["group"]] = smp.value
 			}
 		}
-		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 0, "gpu": 1}
+		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 1, "gpu": 1}
 		if fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Errorf("collector errors = %v, want %v", got, want)
 		}
@@ -210,7 +210,9 @@ func TestPromValues(t *testing.T) {
 	})
 
 	t.Run("no sensors and no darwin fields leave those families out entirely", func(t *testing.T) {
-		b := string(Prom(darwinFull(), testBuild))
+		s := darwinFull()
+		s.Temps = nil
+		b := string(Prom(s, testBuild))
 		if strings.Contains(b, "vitals_temperature_celsius") {
 			t.Error("darwin has temperature lines without sensors")
 		}

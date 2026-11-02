@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -264,4 +265,93 @@ func gpuFromAccelerators(n int, rs []gpuReading) (*GPU, error) {
 		return nil, problem
 	}
 	return best, nil
+}
+
+// hidTemp mirrors one IOHID temperature service from the shim.
+type hidTemp struct {
+	Name     string  // its "Product" property, "" when missing
+	HasEvent bool    // it answered with a temperature event
+	Celsius  float64 // that event's value
+}
+
+// The IOHID "Product" name prefixes that count as CPU and GPU die sensors.
+// They are macmon's (decision 45): the performance and efficiency clusters'
+// "MTR" sensors for the CPU, and the GPU's own. Everything else (the PMU's
+// tdie and tdev sensors, SOC, ANE, NAND, the battery) is left out.
+var (
+	hidCPUPrefixes = []string{"pACC MTR Temp Sensor", "eACC MTR Temp Sensor"}
+	hidGPUPrefixes = []string{"GPU MTR Temp Sensor"}
+)
+
+// maxCelsius bounds a believable die reading. Apple Silicon throttles near
+// 105 °C, so anything above this (or at or below 0, which an idle or absent
+// sensor reports) is a bad reading, dropped rather than averaged in.
+const maxCelsius = 150
+
+// tempsFromHID aggregates the n IOHID temperature services the shim listed
+// (len(rs) is n, or the shim's capacity when n is more) into the CPU's and
+// GPU's mean and maximum, in that order (decision 45). A machine with no CPU
+// or GPU die sensors, as in a VM, has no temps and no error, like Linux
+// without hwmon. Sensors that gave no reading, or one out of range, are
+// dropped, and the group fails only when there were die sensors and none of
+// them read in range, as on Linux (decision 31).
+func tempsFromHID(n int, rs []hidTemp) ([]Temp, error) {
+	if n > len(rs) {
+		return nil, fmt.Errorf("the IOHID event system lists %d temperature sensors, more than the shim's %d", n, len(rs))
+	}
+	var ts []Temp
+	matched := 0
+	for _, kind := range []struct {
+		name     string
+		prefixes []string
+	}{{"CPU", hidCPUPrefixes}, {"GPU", hidGPUPrefixes}} {
+		var sum, peak float64
+		count := 0
+		for _, r := range rs {
+			if !hasAnyPrefix(r.Name, kind.prefixes) {
+				continue
+			}
+			matched++
+			if !r.HasEvent || !(r.Celsius > 0 && r.Celsius <= maxCelsius) { // NaN too
+				continue
+			}
+			sum += r.Celsius
+			peak = max(peak, r.Celsius)
+			count++
+		}
+		if count > 0 {
+			ts = append(ts, Temp{Label: kind.name + " mean", Celsius: sum / float64(count)},
+				Temp{Label: kind.name + " max", Celsius: peak})
+		}
+	}
+	if len(ts) == 0 && matched > 0 {
+		return nil, fmt.Errorf("none of the %d CPU and GPU temperature sensors gave a reading above 0 and at most %d °C", matched, maxCelsius)
+	}
+	return ts, nil
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// hidOpenError explains the shim's vitals_temps_open result: 0, -1 when IOKit
+// couldn't be opened, -2 when the private symbol missing is gone, or -3 when
+// the event system client or its matching dictionary couldn't be created. Each fails only the temps
+// group, and never falls back to a guess (decision 44).
+func hidOpenError(rc int, missing string) error {
+	switch rc {
+	case 0:
+		return nil
+	case -1:
+		return errors.New("dlopen of IOKit failed, so the IOHID event system can't be reached")
+	case -2:
+		return fmt.Errorf("the private IOHID function %s is missing from this macOS; check for a newer vitals", missing)
+	default:
+		return errors.New("creating an IOHID event system client failed")
+	}
 }

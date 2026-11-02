@@ -229,8 +229,13 @@ func TestHTMLContent(t *testing.T) {
 	})
 
 	t.Run("the temperatures card is omitted when temps is null", func(t *testing.T) {
-		if page := mustHTML(t, darwinFull(), nil, Page{}); strings.Contains(page, "Temperatures") {
-			t.Error("darwin page has a temperatures card")
+		s := darwinFull()
+		s.Temps = nil
+		if page := mustHTML(t, s, nil, Page{}); strings.Contains(page, "Temperatures") {
+			t.Error("a darwin page without sensors has a temperatures card")
+		}
+		if page := mustHTML(t, darwinFull(), nil, Page{}); !strings.Contains(page, "<td class=\"r num\">52.2\u00a0°C</td>") {
+			t.Error("darwin page lacks its CPU max")
 		}
 		if page := mustHTML(t, linuxPartial(), nil, Page{}); !strings.Contains(page, "<td class=\"r num\">39.9\u00a0°C</td>") {
 			t.Error("linux page lacks its temperatures")

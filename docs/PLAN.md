@@ -133,7 +133,7 @@ Field names are `snake_case`, and timestamps are RFC 3339 UTC. Abbreviated examp
 }
 ```
 
-The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. As built in M14 (decision 46), darwin adds a top-level `"darwin": {"gpu": {"utilization_pct": 23}}`, with `gpu` null when that group failed. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps` and `_pps`) are `null`. `temps` is `null` when there are no sensors, which on darwin is always in v1. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`, and `gpu` on darwin) to its error message, and is `{}` when every group is fine.
+The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. As built in M14 (decision 46), darwin adds a top-level `"darwin": {"gpu": {"utilization_pct": 23}}`, with `gpu` null when that group failed. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps` and `_pps`) are `null`. `temps` is `null` when there are no sensors. Since M15, darwin fills it with `CPU mean`, `CPU max`, `GPU mean`, and `GPU max` (decisions 45, 47), and leaves it `null` on a machine without die sensors, such as a VM. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`, and `gpu` on darwin) to its error message, and is `{}` when every group is fine.
 
 ### Prometheus exposition
 

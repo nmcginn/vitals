@@ -2,6 +2,7 @@ package render
 
 import (
 	"runtime"
+	"runtime/debug"
 	"testing"
 )
 
@@ -11,8 +12,13 @@ import (
 var raceEnabled bool
 
 // allocatedPerRun is the bytes f allocates on average, the byte-count twin of
-// testing.AllocsPerRun.
+// testing.AllocsPerRun. The collector is off while it measures: encoding/json
+// keeps its buffer in a sync.Pool, and two collections between runs empty it,
+// so a run sometimes paid to regrow that buffer from nothing and history JSON
+// failed its bound about one time in twelve. With the pool kept, the count is
+// the renderer's own, every time.
 func allocatedPerRun(runs int, f func()) uint64 {
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
 	f() // warm up, as AllocsPerRun does
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)

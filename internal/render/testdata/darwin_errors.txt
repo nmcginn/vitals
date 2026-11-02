@@ -16,3 +16,6 @@ Disks
 Network
   IFACE      RECEIVE         SEND   RX TOTAL   TX TOTAL
   en0     12.5 KiB/s    3.3 KiB/s   93.7 MiB   11.4 MiB
+
+Temperatures unavailable: the private IOHID function IOHIDServiceClientCopyEvent
+  is missing from this macOS; check for a newer vitals

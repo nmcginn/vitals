@@ -34,6 +34,11 @@ type darwin struct {
 	mounts [C.VITALS_MAX_MOUNTS]C.struct_vitals_mount
 	gpus   [C.VITALS_MAX_GPUS]C.struct_vitals_gpu
 	gpuRs  [C.VITALS_MAX_GPUS]gpuReading
+	temps  [C.VITALS_MAX_TEMPS]C.struct_vitals_temp
+	hidRs  [C.VITALS_MAX_TEMPS]hidTemp
+	// The IOHID event system is opened once, in New; when that failed,
+	// every collection reports why (decision 44).
+	hidErr error
 	opts   Options
 }
 
@@ -52,6 +57,8 @@ func New(opts Options) Collector {
 	}}
 	levels := perfLevels{Levels: int(s.nperflevels), Logical: [2]int{int(s.perflevel_logical[0]), int(s.perflevel_logical[1])}}
 	d.kinds, d.kindsErr = coreKinds(int(C.vitals_cpu_load(&d.load[0], C.VITALS_MAX_CPUS)), levels, cpuNodes())
+	var missing [64]C.char
+	d.hidErr = hidOpenError(int(C.vitals_temps_open(&missing[0], C.int(len(missing)))), C.GoString(&missing[0]))
 	return d
 }
 
@@ -69,8 +76,6 @@ func cpuNodes() []cpuNode {
 
 func (d *darwin) Static() HostInfo { return d.info }
 
-// Temperatures are absent on darwin in v1 (they need private API), so temps
-// is simply empty rather than an error.
 func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	raw := Raw{Errors: map[string]error{}}
 	var h C.struct_vitals_host
@@ -105,6 +110,9 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	}
 	if raw.GPU, err = d.gpu(); err != nil {
 		raw.Errors[GroupGPU] = err
+	}
+	if raw.Temps, err = d.tempsGroup(); err != nil {
+		raw.Errors[GroupTemps] = err
 	}
 	return raw, nil
 }
@@ -179,6 +187,26 @@ func (d *darwin) gpu() (*GPU, error) {
 		rs[i] = gpuReading{HasStats: g.has_stats != 0, HasUtil: g.has_util != 0, Util: float64(g.util)}
 	}
 	return gpuFromAccelerators(n, rs)
+}
+
+// tempsGroup is the CPU and GPU aggregates of the IOHID temperature sensors.
+func (d *darwin) tempsGroup() ([]Temp, error) {
+	if d.hidErr != nil {
+		return nil, d.hidErr
+	}
+	return tempsFromHID(d.hidSensors())
+}
+
+// hidSensors is every IOHID temperature service's reading, and how many the
+// system listed. The slice is reused by the next call.
+func (d *darwin) hidSensors() (int, []hidTemp) {
+	n := int(C.vitals_temps(&d.temps[0], C.VITALS_MAX_TEMPS))
+	rs := d.hidRs[:min(max(n, 0), C.VITALS_MAX_TEMPS)]
+	for i := range rs {
+		t := &d.temps[i]
+		rs[i] = hidTemp{Name: C.GoString(&t.name[0]), HasEvent: t.has_event != 0, Celsius: float64(t.celsius)}
+	}
+	return n, rs
 }
 
 // memory returns the memory group, which may come with an error when only the

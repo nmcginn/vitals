@@ -14,27 +14,19 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: v1 is built and M13 has merged; M14 (GPU utilisation) is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
-- Next up: M15, SoC temperatures on darwin.
-- Open PRs waiting on review: M14, GPU utilisation on darwin.
+- Current: v1 is built, M14 (GPU utilisation) has merged, and M15 (SoC temperatures) is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
+- Next up: M16, CPU, GPU, and ANE power on darwin.
+- Open PRs waiting on review: M15, SoC temperatures on darwin.
 
 ## Open questions for the maintainer
 
 Questions the loop could not answer without guessing at behaviour, architecture, or the plan. Each names the task it blocks. When the maintainer answers, record the answer in `docs/DECISIONS.md`, add a *Decided* note to the task, and delete the question here.
 
-None.
+- **Do newer chips' IOHID sensors carry macmon's CPU and GPU names?** (Raised in M15; blocks nothing yet.) Decision 45 follows macmon, whose IOHID path matches `pACC`/`eACC`/`GPU MTR Temp Sensor`. Published M1 listings have those names, but macmon switched to SMC keys for later chips and macOS releases, which suggests the Mini's M4 may list only `PMU tdie*`/`tdev*` sensors, leaving `temps` null. Run `go test -v -run TestDarwinCollect ./internal/collector` on the Mini: it logs every sensor name. If none match, the options are (a) leave darwin temps null on that chip; (b) add an `SoC mean`/`SoC max` pair from `PMU tdie*` when no CPU or GPU names exist; (c) another mapping from the logged names. Recommendation: (b), which is honest about not knowing which die is which.
 
 ---
 
 ## Open
-
-### M15: SoC temperatures on darwin (v1.1)
-
-- [ ] **The temps card fills in on the Mac.**
-  *Needs:* M7.
-  The IOHID event system (`IOHIDEventSystemClientCreate` and friends, private), resolved with `dlopen`/`dlsym` in the shim per decision 44. Readings are aggregated to CPU and GPU means and maxima per decision 45, in untagged `darwin_conv.go`, and published in the existing `temps` list, so the renderers need no new shape. Decision 45 gains the sensor-name mapping and its source.
-
-  *Acceptance:* conversion tests from captured sensor names and readings: the CPU and GPU aggregates; no matching sensors (`"temps": null`, as on Linux without hwmon); a sensor reading 0 or out of range (dropped, not averaged in); and a missing symbol (temps error, every other group served, no crash). `make shim-check` stays clean. `otool -L` is unchanged (the `dist-check` assertion). The darwin integration test accepts no sensors or aggregates between 0 and 150 °C. `make budget` passes, and resolution happens once, not per tick. *(maintainer)* on the Mini, CPU and GPU agree with macmon to within a few °C.
 
 ### M16: CPU, GPU, and ANE power on darwin (v1.1)
 
@@ -63,6 +55,7 @@ None.
 - **M12: Budget.** Allocation and growth tests for the tick and the renderers in `make budget` (part of `make check`), benchmarks for collect, tick, and each renderer, the dashboard's sparklines downsampled in place, and `make soak` (decision 40). *(maintainer)* The one-hour idle check on the Mini is still to run: `SOAK_MINUTES=60 make soak`.
 - **M13: Idle interfaces.** `shownInterfaces` in `render/shown.go` drops interfaces with zero rx and tx totals from the dashboard and text, and JSON and Prometheus list every one (decision 41). *(maintainer)* the Mini's network card shows only the ports in use.
 - **M14: GPU utilisation.** The `gpu` group from the `IOAccelerator` `PerformanceStatistics` "Device Utilization %" through the shim, `darwin.gpu.utilization_pct` in JSON, `vitals_gpu_utilization_ratio`, a GPU card with a sparkline, and a `GPU` line in text (decision 46). *(maintainer)* it tracks Activity Monitor's GPU History under load.
+- **M15: SoC temperatures.** `vitals_temps_open`/`vitals_temps` in the shim through `dlopen` of IOKit's private IOHID event system, `tempsFromHID` aggregating macmon's CPU and GPU sensor names to `CPU mean`/`max` and `GPU mean`/`max` in `temps`, readings outside 0 to 150 °C dropped (decisions 45, 47). *(maintainer)* CPU and GPU agree with macmon on the Mini; see the open question.
 
 ---
 
