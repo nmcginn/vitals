@@ -169,7 +169,7 @@ func TestPromValues(t *testing.T) {
 				got[smp.labels["group"]] = smp.value
 			}
 		}
-		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 1, "gpu": 1}
+		want := map[string]float64{"host": 0, "cpu": 1, "memory": 1, "disks": 1, "network": 0, "temps": 1, "gpu": 1, "power": 1}
 		if fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Errorf("collector errors = %v, want %v", got, want)
 		}
@@ -189,6 +189,41 @@ func TestPromValues(t *testing.T) {
 		s.Darwin.GPU.UtilizationPct = 0
 		if b := string(Prom(s, testBuild)); !strings.Contains(b, "\nvitals_gpu_utilization_ratio 0\n") {
 			t.Errorf("an idle GPU has no sample:\n%s", b)
+		}
+	})
+
+	t.Run("power is watts and a joules counter per domain, and an idle ANE is 0, not left out", func(t *testing.T) {
+		b := string(Prom(darwinFull(), testBuild))
+		for _, want := range []string{
+			`vitals_power_watts{domain="cpu"} 1.875`, `vitals_power_watts{domain="gpu"} 0.4375`, `vitals_power_watts{domain="ane"} 0`,
+			`vitals_energy_joules_total{domain="cpu"} 1234567.891`, `vitals_energy_joules_total{domain="ane"} 321`,
+			"# TYPE vitals_power_watts gauge", "# TYPE vitals_energy_joules_total counter",
+		} {
+			if !strings.Contains(b, want+"\n") {
+				t.Errorf("output lacks %s:\n%s", want, b)
+			}
+		}
+	})
+
+	t.Run("unknown watts are omitted on the first sample, and the energy counters stay", func(t *testing.T) {
+		b := string(Prom(darwinFirst(), testBuild))
+		if strings.Contains(b, "vitals_power_watts") {
+			t.Errorf("first sample has watts, want them omitted:\n%s", b)
+		}
+		if n := strings.Count(b, "vitals_energy_joules_total{"); n != 3 {
+			t.Errorf("%d energy counters on the first sample, want 3", n)
+		}
+	})
+
+	t.Run("a failed power group leaves both families out and reads 1 in collector_error", func(t *testing.T) {
+		b := string(Prom(darwinErrors(), testBuild))
+		for _, absent := range []string{"vitals_power_watts", "vitals_energy_joules_total"} {
+			if strings.Contains(b, absent) {
+				t.Errorf("failed power group still has %s", absent)
+			}
+		}
+		if !strings.Contains(b, `vitals_collector_error{group="power"} 1`+"\n") {
+			t.Error("the failed power group is not 1 in vitals_collector_error")
 		}
 	})
 
@@ -217,7 +252,8 @@ func TestPromValues(t *testing.T) {
 			t.Error("darwin has temperature lines without sensors")
 		}
 		b = string(Prom(linuxPartial(), testBuild))
-		for _, absent := range []string{"vitals_memory_wired_bytes", "vitals_cpu_core_info", "vitals_memory_pressure", "vitals_network_", "vitals_gpu_", `group="gpu"`} {
+		for _, absent := range []string{"vitals_memory_wired_bytes", "vitals_cpu_core_info", "vitals_memory_pressure", "vitals_network_", "vitals_gpu_", `group="gpu"`,
+			"vitals_power_", "vitals_energy_", `group="power"`} {
 			if strings.Contains(b, absent) {
 				t.Errorf("linux output has %s", absent)
 			}

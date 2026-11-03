@@ -14,8 +14,9 @@ var sampledAt = time.Date(2026, 10, 21, 14, 2, 6, 0, time.UTC)
 func p[T any](v T) *T { return &v }
 
 // darwinFull is a second sample on an M4 Mac Mini: every group, every rate,
-// an interface that has never moved a byte, as most of a Mac's do, and the
-// CPU and GPU temperature aggregates (decision 45).
+// an interface that has never moved a byte, as most of a Mac's do, the CPU
+// and GPU temperature aggregates (decision 45), and power with an idle ANE
+// (decision 48).
 func darwinFull() *sampler.Snapshot {
 	boot := time.Date(2026, 10, 11, 14, 2, 6, 0, time.UTC)
 	return &sampler.Snapshot{
@@ -58,7 +59,14 @@ func darwinFull() *sampler.Snapshot {
 			{Label: "CPU mean", Celsius: 46.8125}, {Label: "CPU max", Celsius: 52.25},
 			{Label: "GPU mean", Celsius: 41.5}, {Label: "GPU max", Celsius: 43},
 		},
-		Darwin: &sampler.Darwin{GPU: &collector.GPU{UtilizationPct: 23}},
+		Darwin: &sampler.Darwin{
+			GPU: &collector.GPU{UtilizationPct: 23},
+			Power: []sampler.Power{
+				{Domain: "cpu", Watts: p(1.875), EnergyJoules: 1234567.891},
+				{Domain: "gpu", Watts: p(0.4375), EnergyJoules: 45678.901234},
+				{Domain: "ane", Watts: p(0.0), EnergyJoules: 321},
+			},
+		},
 		Errors: map[string]string{},
 	}
 }
@@ -71,6 +79,9 @@ func darwinFirst() *sampler.Snapshot {
 		s.CPU.PerCorePct[i] = nil
 	}
 	s.Disks[0].ReadBps, s.Disks[0].WriteBps = nil, nil
+	for i := range s.Darwin.Power {
+		s.Darwin.Power[i].Watts = nil
+	}
 	for i := range s.Network {
 		n := &s.Network[i]
 		n.RxBps, n.TxBps, n.RxPps, n.TxPps = nil, nil, nil, nil
@@ -115,8 +126,8 @@ func linuxPartial() *sampler.Snapshot {
 	}
 }
 
-// darwinErrors is a darwin sample where CPU, memory, the GPU, and the
-// temperatures failed, one mount couldn't be read, and the rest is fine.
+// darwinErrors is a darwin sample where CPU, memory, the GPU, the
+// temperatures, and power failed, one mount couldn't be read, and the rest is fine.
 func darwinErrors() *sampler.Snapshot {
 	s := darwinFull()
 	s.CPU, s.Memory, s.Temps = nil, nil, nil
@@ -127,12 +138,13 @@ func darwinErrors() *sampler.Snapshot {
 		"disks":  `statfs "/Volumes/Backup": input/output error`,
 		"gpu":    "the IORegistry lists no IOAccelerator, so there is no GPU to read",
 		"temps":  "the private IOHID function IOHIDServiceClientCopyEvent is missing from this macOS; check for a newer vitals",
+		"power":  "the private IOReport function IOReportCreateSamples is missing from this macOS; check for a newer vitals",
 	}
 	return s
 }
 
 // historyOf is n samples ending in s, two seconds apart, with CPU, GPU,
-// memory, and every busy interface's rates varying so sparklines have something to
+// power, memory, and every busy interface's rates varying so sparklines have something to
 // draw. An idle interface stays at s's rates, as a real one would.
 // The oldest sample has no rates, like the first one after startup, and
 // sample 3 is missing its network group.
@@ -146,8 +158,19 @@ func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
 			c.UsagePct = p(float64(i * 37 % 100))
 			snap.CPU = &c
 		}
-		if s.Darwin != nil && s.Darwin.GPU != nil {
-			snap.Darwin = &sampler.Darwin{GPU: &collector.GPU{UtilizationPct: float64(i * 23 % 100)}}
+		if s.Darwin != nil {
+			d := *s.Darwin
+			if d.GPU != nil {
+				d.GPU = &collector.GPU{UtilizationPct: float64(i * 23 % 100)}
+			}
+			if d.Power != nil {
+				d.Power = make([]sampler.Power, len(s.Darwin.Power))
+				for j, pw := range s.Darwin.Power {
+					pw.Watts = p(float64((i*13+j*5)%40) / 4)
+					d.Power[j] = pw
+				}
+			}
+			snap.Darwin = &d
 		}
 		if s.Memory != nil {
 			m := *s.Memory
@@ -167,6 +190,11 @@ func historyOf(s *sampler.Snapshot, n int) []*sampler.Snapshot {
 		if i == 0 {
 			if snap.CPU != nil {
 				snap.CPU.UsagePct = nil
+			}
+			if snap.Darwin != nil {
+				for j := range snap.Darwin.Power {
+					snap.Darwin.Power[j].Watts = nil
+				}
 			}
 			for j := range snap.Network {
 				snap.Network[j].RxBps, snap.Network[j].TxBps = nil, nil

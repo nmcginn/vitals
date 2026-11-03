@@ -11,6 +11,8 @@ Memory 9.0 GiB of 16.0 GiB used (56.2%)
 
 GPU 23.0%
 
+Power 2.31 W (CPU + GPU + ANE) · CPU 1.88 W · GPU 0.44 W · ANE 0.00 W
+
 Disks
   MOUNT       USED       SIZE   USE%         READ        WRITE
   /      112.0 GiB  460.4 GiB  24.3%        0 B/s   40.0 KiB/s

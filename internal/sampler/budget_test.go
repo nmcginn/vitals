@@ -29,7 +29,8 @@ func (r *replayCollector) Static() collector.HostInfo {
 }
 
 // mini is collection n on an M4 Mac Mini at its busiest: 10 cores, two disks,
-// and the eight interfaces a Mac lists by default, every counter moving.
+// the eight interfaces a Mac lists by default, and three power domains, every
+// counter moving.
 func mini(n uint64) collector.Raw {
 	cores := make([]collector.CPUTicks, 10)
 	for i := range cores {
@@ -59,6 +60,7 @@ func mini(n uint64) collector.Raw {
 		},
 		Network: ifaces,
 		GPU:     &collector.GPU{UtilizationPct: 12},
+		Power:   []collector.Energy{{Domain: "cpu", Nanojoules: 2e9 * n}, {Domain: "gpu", Nanojoules: 3e8 * n}, {Domain: "ane", Nanojoules: 0}},
 		Errors:  map[string]error{},
 	}
 }
@@ -87,11 +89,12 @@ func replay(n, capacity int) (*Sampler, *Store) {
 //	 7  disks: the slice, 2 mounts' used %, 2 mounts' read and write rates
 //	33  network: the slice, 8 interfaces' 4 rates
 //	 1  darwin: the sub-object (the GPU reading is the collector's, passed through)
+//	 4  power: the slice, 3 domains' watts
 //
 // A 16-interface machine would allocate more, and that's fine. What this guards
 // is a tick that starts allocating per sample of history, or an accidental
 // copy of the collection.
-const tickAllocs = 7 + 3 + 13 + 7 + 33 + 1
+const tickAllocs = 7 + 3 + 13 + 7 + 33 + 1 + 4
 
 // raceEnabled is set by race_test.go. The race detector makes sync.Pool drop
 // items at random, so allocation counts under it measure the detector; `make

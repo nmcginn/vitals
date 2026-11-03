@@ -113,6 +113,7 @@ func TestTextContent(t *testing.T) {
 			"CPU unavailable: host_processor_info: (os/kern) failure\n",
 			"Memory unavailable: host_statistics64: (os/kern) failure\n",
 			"GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to\n  read\n",
+			"Power unavailable: the private IOReport function IOReportCreateSamples is\n  missing from this macOS; check for a newer vitals\n",
 			"Disks\n  statfs \"/Volumes/Backup\": input/output error\n  MOUNT",
 		} {
 			if !strings.Contains(out, want) {
@@ -155,12 +156,38 @@ func TestTextContent(t *testing.T) {
 		}
 	})
 
-	t.Run("darwin has a GPU line between memory and disks, and linux has none", func(t *testing.T) {
-		if out := string(Text(darwinFull())); !strings.Contains(out, "\n\nGPU 23.0%\n\nDisks\n") {
-			t.Errorf("lacks the GPU line:\n%s", out)
+	t.Run("darwin has GPU and power lines between memory and disks, and linux has neither", func(t *testing.T) {
+		want := "\n\nGPU 23.0%\n\nPower 2.31 W (CPU + GPU + ANE) · CPU 1.88 W · GPU 0.44 W · ANE 0.00 W\n\nDisks\n"
+		if out := string(Text(darwinFull())); !strings.Contains(out, want) {
+			t.Errorf("lacks %q:\n%s", want, out)
 		}
-		if out := string(Text(linuxPartial())); strings.Contains(out, "GPU") {
-			t.Errorf("linux output mentions a GPU:\n%s", out)
+		if out := string(Text(linuxPartial())); strings.Contains(out, "GPU") || strings.Contains(out, "Power") {
+			t.Errorf("linux output mentions a GPU or power:\n%s", out)
+		}
+	})
+
+	t.Run("unknown watts on the first sample are —, total included, never 0.00 W", func(t *testing.T) {
+		want := "Power — (CPU + GPU + ANE) · CPU — · GPU — · ANE —\n"
+		if out := string(Text(darwinFirst())); !strings.Contains(out, want) {
+			t.Errorf("lacks %q:\n%s", want, out)
+		}
+	})
+
+	t.Run("one domain with unknown watts makes the total —, not a smaller figure", func(t *testing.T) {
+		s := darwinFull()
+		s.Darwin.Power[1].Watts = nil
+		want := "Power — (CPU + GPU + ANE) · CPU 1.88 W · GPU — · ANE 0.00 W\n"
+		if out := string(Text(s)); !strings.Contains(out, want) {
+			t.Errorf("lacks %q:\n%s", want, out)
+		}
+	})
+
+	t.Run("a chip without an ANE channel names only the domains it adds up", func(t *testing.T) {
+		s := darwinFull()
+		s.Darwin.Power = s.Darwin.Power[:2]
+		want := "Power 2.31 W (CPU + GPU) · CPU 1.88 W · GPU 0.44 W\n"
+		if out := string(Text(s)); !strings.Contains(out, want) {
+			t.Errorf("lacks %q:\n%s", want, out)
 		}
 	})
 

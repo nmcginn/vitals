@@ -94,8 +94,21 @@ func TestJSONFormatting(t *testing.T) {
 	})
 
 	t.Run("a failed GPU group is darwin.gpu null, never 0", func(t *testing.T) {
-		if b := mustJSON(t, darwinErrors(), false); !bytes.Contains(b, []byte(`"darwin":{"gpu":null}`)) {
+		if b := mustJSON(t, darwinErrors(), false); !bytes.Contains(b, []byte(`"darwin":{"gpu":null,`)) {
 			t.Errorf("output lacks a null gpu:\n%s", b)
+		}
+	})
+
+	t.Run("a failed power group is darwin.power null, never an empty list or zero watts", func(t *testing.T) {
+		if b := mustJSON(t, darwinErrors(), false); !bytes.Contains(b, []byte(`"power":null}`)) {
+			t.Errorf("output lacks a null power:\n%s", b)
+		}
+	})
+
+	t.Run("unknown watts are null on the first sample, beside each domain's energy", func(t *testing.T) {
+		want := `"power":[{"domain":"cpu","power_w":null,"energy_j":1234567.891},{"domain":"gpu","power_w":null,"energy_j":45678.901234},{"domain":"ane","power_w":null,"energy_j":321}]`
+		if b := mustJSON(t, darwinFirst(), false); !bytes.Contains(b, []byte(want)) {
+			t.Errorf("output lacks %s:\n%s", want, b)
 		}
 	})
 
@@ -125,6 +138,10 @@ var documentedAdditions = []string{
 	"darwin",
 	"darwin.gpu",
 	"darwin.gpu.utilization_pct",
+	"darwin.power",
+	"darwin.power[].domain",
+	"darwin.power[].energy_j",
+	"darwin.power[].power_w",
 	"disks[].free_bytes",
 	"host.boot_time",
 	"host.os_version",

@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math/bits"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -353,5 +355,106 @@ func hidOpenError(rc int, missing string) error {
 		return fmt.Errorf("the private IOHID function %s is missing from this macOS; check for a newer vitals", missing)
 	default:
 		return errors.New("creating an IOHID event system client failed")
+	}
+}
+
+// ioreportChannel mirrors one IOReport channel's sample from the shim.
+type ioreportChannel struct {
+	Group, Name, Unit string
+	Value             int64 // IOReportSimpleGetIntegerValue, in Unit
+}
+
+// energyModelGroup is the IOReport group whose channels count energy.
+const energyModelGroup = "Energy Model"
+
+// powerDomains are the domains Power reports, in output order.
+var powerDomains = []string{"cpu", "gpu", "ane"}
+
+// energyDomain is the domain an Energy Model channel counts toward, or "" for
+// one Power leaves out (DRAM, display, media engines, and the per-cluster and
+// per-core channels the totals already include). The names are macmon's
+// (decision 48): "CPU Energy" on most chips and "DIE_<n>_CPU Energy" on an
+// Ultra; "GPU Energy"; and "ANE", "ANE0", or "ANE0_<n>" by chip size.
+func energyDomain(name string) string {
+	switch {
+	case strings.HasSuffix(name, "CPU Energy"):
+		return "cpu"
+	case name == "GPU Energy":
+		return "gpu"
+	case strings.HasPrefix(name, "ANE"):
+		return "ane"
+	}
+	return ""
+}
+
+// nanojoulesPer converts IOReport's energy unit labels. They arrive padded
+// with spaces on some releases, so they are trimmed first.
+var nanojoulesPer = map[string]uint64{"mJ": 1_000_000, "uJ": 1_000, "µJ": 1_000, "nJ": 1}
+
+// powerFromIOReport sums the n Energy Model channels the shim sampled (len(cs)
+// is n, or the shim's capacity when n is more) into one cumulative counter
+// per domain, in nanojoules (decision 48). A domain with no channel, such as
+// an ANE a chip doesn't report, is left out. Every problem with a channel
+// Power uses fails the group, naming the channel, rather than reporting a
+// domain short of some of its energy: an unknown unit, a negative value, or
+// one too large to count in nanojoules. No CPU, GPU, or ANE channel at all
+// fails it too, so a macOS that renames them shows an error, not a blank.
+func powerFromIOReport(n int, cs []ioreportChannel) ([]Energy, error) {
+	switch {
+	case n < 0:
+		return nil, errors.New("IOReportCreateSamples gave no Energy Model sample")
+	case n > len(cs):
+		return nil, fmt.Errorf("IOReport lists %d Energy Model channels, more than the shim's %d", n, len(cs))
+	}
+	var sums [3]uint64
+	var seen [3]bool
+	for _, c := range cs {
+		d := slices.Index(powerDomains, energyDomain(c.Name))
+		if c.Group != energyModelGroup || d < 0 {
+			continue
+		}
+		unit := strings.TrimSpace(c.Unit)
+		scale, ok := nanojoulesPer[unit]
+		switch {
+		case !ok:
+			return nil, fmt.Errorf("IOReport channel %q counts energy in %q, a unit vitals doesn't know", c.Name, unit)
+		case c.Value < 0:
+			return nil, fmt.Errorf("IOReport channel %q reads %d %s, below zero", c.Name, c.Value, unit)
+		}
+		hi, nj := bits.Mul64(uint64(c.Value), scale)
+		sum, carry := bits.Add64(sums[d], nj, 0)
+		if hi != 0 || carry != 0 {
+			return nil, fmt.Errorf("IOReport channel %q reads %d %s, too much energy to count in nanojoules", c.Name, c.Value, unit)
+		}
+		sums[d], seen[d] = sum, true
+	}
+	var es []Energy
+	for d, domain := range powerDomains {
+		if seen[d] {
+			es = append(es, Energy{Domain: domain, Nanojoules: sums[d]})
+		}
+	}
+	if es == nil {
+		return nil, fmt.Errorf("none of the %d IOReport Energy Model channels is CPU, GPU, or ANE energy", n)
+	}
+	return es, nil
+}
+
+// powerOpenError explains the shim's vitals_power_open result: 0, -1 when
+// libIOReport couldn't be opened, -2 when the private symbol missing is gone,
+// -3 when IOReport has no Energy Model channels, or -4 when subscribing to them
+// failed. Each fails only the power group (decision 44).
+func powerOpenError(rc int, missing string) error {
+	switch rc {
+	case 0:
+		return nil
+	case -1:
+		return errors.New("dlopen of /usr/lib/libIOReport.dylib failed, so the energy counters can't be reached")
+	case -2:
+		return fmt.Errorf("the private IOReport function %s is missing from this macOS; check for a newer vitals", missing)
+	case -3:
+		return errors.New("IOReport lists no Energy Model channels on this Mac")
+	default:
+		return errors.New("subscribing to IOReport's Energy Model channels failed")
 	}
 }

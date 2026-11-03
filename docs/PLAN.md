@@ -72,6 +72,7 @@ Six groups. On macOS, collection calls Mach, sysctl, and IOKit directly through 
 | Disks | per mount: device, mount point, fs type, total, used, free, used %; read/write bytes/s per physical device | `getfsstat` + `statfs`; IOKit `IOBlockStorageDriver` "Statistics" dictionary for byte counters | `/proc/self/mounts`, `statfs`, `/proc/diskstats` deltas |
 | Network | per interface: rx/tx bytes/s, rx/tx packets/s, cumulative totals | sysctl `IFMIB_IFDATA` (`ifmibdata` / `if_data64`), per decision 24. **Not** `NET_RT_IFLIST2` or `getifaddrs`, whose counters wrap at 4 GiB for unprivileged callers | `/proc/net/dev` deltas |
 | GPU (v1.1, darwin only) | utilization % | IOKit `IOAccelerator` `PerformanceStatistics` "Device Utilization %" (M14, decision 46) | none |
+| Power (v1.1, darwin only) | per domain (CPU, GPU, ANE): watts, cumulative joules | IOReport "Energy Model" channels through `dlopen` (M16, decision 48) | none |
 | Temperatures | per sensor: label, °C | Not in v1. v1.1: the IOHID event system through `dlopen`, aggregated to CPU and GPU (M15, decisions 44, 45) | `/sys/class/hwmon/*` |
 
 Collection rules:
@@ -133,7 +134,7 @@ Field names are `snake_case`, and timestamps are RFC 3339 UTC. Abbreviated examp
 }
 ```
 
-The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. As built in M14 (decision 46), darwin adds a top-level `"darwin": {"gpu": {"utilization_pct": 23}}`, with `gpu` null when that group failed. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps` and `_pps`) are `null`. `temps` is `null` when there are no sensors. Since M15, darwin fills it with `CPU mean`, `CPU max`, `GPU mean`, and `GPU max` (decisions 45, 47), and leaves it `null` on a machine without die sensors, such as a VM. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`, and `gpu` on darwin) to its error message, and is `{}` when every group is fine.
+The fields the example abbreviates (`os_version`, `boot_time`, the remaining darwin memory fields, a disk's `free_bytes`) follow the same conventions. As built in M14 (decision 46), darwin adds a top-level `"darwin": {"gpu": {"utilization_pct": 23}}`, with `gpu` null when that group failed. M16 (decision 48) adds `"power": [{"domain": "cpu", "power_w": 1.9, "energy_j": 1234567.9}, …]` beside it, one entry per domain the chip reports (`cpu`, `gpu`, `ane`), `power_w` null on the first sample, and `power` null when that group failed. The complete shape is fixed by a golden file in M1, and `docs/ARCHITECTURE.md` links to it. Rates unknown on the first sample (`usage_pct`, `per_core_pct` entries, every `_bps`, `_pps`, and `power_w`) are `null`. `temps` is `null` when there are no sensors. Since M15, darwin fills it with `CPU mean`, `CPU max`, `GPU mean`, and `GPU max` (decisions 45, 47), and leaves it `null` on a machine without die sensors, such as a VM. `errors` maps a group name (`host`, `cpu`, `memory`, `disks`, `network`, `temps`, and `gpu` and `power` on darwin) to its error message, and is `{}` when every group is fine.
 
 ### Prometheus exposition
 
@@ -154,6 +155,7 @@ Metric names use the `vitals_` prefix with base units, and the exposition is wri
 - `vitals_temperature_celsius{sensor}`, `vitals_load_average{period="1m|5m|15m"}`, `vitals_uptime_seconds`, `vitals_boot_time_seconds`
 - `vitals_collector_error{group}` (0 or 1), and `vitals_build_info{version,commit}` set to 1
 - As built in M14 (decision 46): `vitals_gpu_utilization_ratio` on darwin, and `gpu` in `vitals_collector_error` there only
+- As built in M16 (decision 48): `vitals_power_watts{domain}` and the counter `vitals_energy_joules_total{domain}` on darwin, with `domain` one of `cpu`, `gpu`, `ane`, and `power` in `vitals_collector_error` there only
 - As built in M9 (decision 35): also `vitals_host_info{hostname,os,os_version,kernel,arch}` set to 1, and the disk rates' `device` is the physical device, written once per device
 
 A rate that is unknown on this sample is omitted, because Prometheus has no null. Ratios run 0 to 1, not 0 to 100.
@@ -162,7 +164,7 @@ A rate that is unknown on this sample is omitted, because Prometheus has no null
 
 One server-rendered HTML page, built with `html/template`, **under 50 KB**, with no external requests. JavaScript is minimal and optional (decision 34): one inline script adds the light/dark/auto theme toggle, and everything else works with scripts off.
 
-- **Layout, top to bottom:** a header line (hostname, OS/kernel, uptime, sampled-at time), then cards for CPU, memory, disks, network, and temperatures (omitted when there are none). Single column on narrow screens, and a two-column grid from about **900px**.
+- **Layout, top to bottom:** a header line (hostname, OS/kernel, uptime, sampled-at time), then cards for CPU, memory, disks, network, and temperatures (omitted when there are none). Darwin adds GPU and Power cards after memory (decisions 46, 48). Single column on narrow screens, and a two-column grid from about **900px**.
 - **Sparklines:** inline SVG generated server-side from the ring buffer. A CPU total line, a memory used line, and a combined rx/tx line per network interface. Fixed `viewBox`, no axes, and the current value as text beside the line.
 - **Disk usage:** a horizontal bar per mount, using a styled `<meter>` or a CSS width. Colour reinforces but is never the only signal: the percentage is shown as text too.
 - **Refresh:** `<meta http-equiv="refresh">` set to the sample interval, with a **minimum of 2s**. `?refresh=0` disables it, and `?refresh=N` overrides it. Links on the page carry the `refresh` value through. **Assumption:** a non-integer or negative `refresh` is ignored, and a value of 1 is raised to 2.

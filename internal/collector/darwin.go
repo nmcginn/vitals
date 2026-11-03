@@ -36,10 +36,13 @@ type darwin struct {
 	gpuRs  [C.VITALS_MAX_GPUS]gpuReading
 	temps  [C.VITALS_MAX_TEMPS]C.struct_vitals_temp
 	hidRs  [C.VITALS_MAX_TEMPS]hidTemp
-	// The IOHID event system is opened once, in New; when that failed,
-	// every collection reports why (decision 44).
-	hidErr error
-	opts   Options
+	energy [C.VITALS_MAX_ENERGY]C.struct_vitals_energy
+	chans  [C.VITALS_MAX_ENERGY]ioreportChannel
+	// The IOHID event system and the IOReport subscription are opened once,
+	// in New; when that failed, every collection reports why (decision 44).
+	hidErr   error
+	powerErr error
+	opts     Options
 }
 
 // New returns the collector for this OS.
@@ -59,6 +62,7 @@ func New(opts Options) Collector {
 	d.kinds, d.kindsErr = coreKinds(int(C.vitals_cpu_load(&d.load[0], C.VITALS_MAX_CPUS)), levels, cpuNodes())
 	var missing [64]C.char
 	d.hidErr = hidOpenError(int(C.vitals_temps_open(&missing[0], C.int(len(missing)))), C.GoString(&missing[0]))
+	d.powerErr = powerOpenError(int(C.vitals_power_open(&missing[0], C.int(len(missing)))), C.GoString(&missing[0]))
 	return d
 }
 
@@ -113,6 +117,9 @@ func (d *darwin) Collect(ctx context.Context) (Raw, error) {
 	}
 	if raw.Temps, err = d.tempsGroup(); err != nil {
 		raw.Errors[GroupTemps] = err
+	}
+	if raw.Power, err = d.power(); err != nil {
+		raw.Errors[GroupPower] = err
 	}
 	return raw, nil
 }
@@ -207,6 +214,26 @@ func (d *darwin) hidSensors() (int, []hidTemp) {
 		rs[i] = hidTemp{Name: C.GoString(&t.name[0]), HasEvent: t.has_event != 0, Celsius: float64(t.celsius)}
 	}
 	return n, rs
+}
+
+// power is each domain's cumulative energy from IOReport's Energy Model.
+func (d *darwin) power() ([]Energy, error) {
+	if d.powerErr != nil {
+		return nil, d.powerErr
+	}
+	return powerFromIOReport(d.energyChannels())
+}
+
+// energyChannels is every subscribed IOReport channel's sample, and how many
+// the sample held. The slice is reused by the next call.
+func (d *darwin) energyChannels() (int, []ioreportChannel) {
+	n := int(C.vitals_power(&d.energy[0], C.VITALS_MAX_ENERGY))
+	cs := d.chans[:min(max(n, 0), C.VITALS_MAX_ENERGY)]
+	for i := range cs {
+		e := &d.energy[i]
+		cs[i] = ioreportChannel{Group: C.GoString(&e.group[0]), Name: C.GoString(&e.name[0]), Unit: C.GoString(&e.unit[0]), Value: int64(e.value)}
+	}
+	return n, cs
 }
 
 // memory returns the memory group, which may come with an error when only the

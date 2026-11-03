@@ -79,6 +79,23 @@
 {{- end}}
 </details>
 </section>
+<section aria-labelledby="power">
+<details data-card="power" open>
+<summary><h2 id="power">Power</h2></summary>
+{{- with index .S.Errors "power"}}
+<p class="error">Power unavailable: {{.}}</p>
+{{- end}}
+{{- with .S.Darwin.Power}}
+<div class="now"><span class="big num">{{watts $.PowerNow}}</span> <span class="of">{{$.PowerOf}}</span>
+{{- template "spark" $.PowerSpark}}</div>
+<dl>
+{{- range .}}
+<dt>{{upper .Domain}}</dt><dd class="num">{{watts .Watts}}</dd>
+{{- end}}
+</dl>
+{{- end}}
+</details>
+</section>
 {{- end}}
 <section aria-labelledby="disks">
 <details data-card="disks" open>

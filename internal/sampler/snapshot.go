@@ -47,7 +47,17 @@ type CPU struct {
 // Darwin holds the groups only darwin has (decision 46). It is present on
 // darwin, where a nil group failed and Errors says why, and nil elsewhere.
 type Darwin struct {
-	GPU *collector.GPU `json:"gpu"`
+	GPU   *collector.GPU `json:"gpu"`
+	Power []Power        `json:"power"`
+}
+
+// Power is one domain's draw (decision 48). Watts is the energy used since
+// the last sample over the actual time between them, null when that can't be
+// known. EnergyJoules is the cumulative counter it comes from.
+type Power struct {
+	Domain       string   `json:"domain"`
+	Watts        *float64 `json:"power_w"`
+	EnergyJoules float64  `json:"energy_j"`
 }
 
 type Disk struct {
@@ -161,12 +171,33 @@ func build(info collector.HostInfo, prev *collector.Raw, cur collector.Raw, elap
 		s.Temps = cur.Temps
 	}
 	if info.OS == "darwin" {
-		s.Darwin = &Darwin{GPU: cur.GPU}
+		s.Darwin = &Darwin{GPU: cur.GPU, Power: power(prev.Power, cur.Power, secs)}
 	}
 	for g, err := range cur.Errors {
 		s.Errors[g] = err.Error()
 	}
 	return s
+}
+
+// power turns each domain's energy counter into watts over secs. A domain
+// missing from prev (the first sample, or a group that failed last time) has
+// null watts, as does a counter that went backwards. Nil cur is a failed
+// group. prev holds at most three domains, so it is searched rather than
+// mapped, which would allocate every tick.
+func power(prev, cur []collector.Energy, secs float64) []Power {
+	if cur == nil {
+		return nil
+	}
+	out := make([]Power, len(cur))
+	for i, e := range cur {
+		out[i] = Power{Domain: e.Domain, EnergyJoules: float64(e.Nanojoules) / 1e9}
+		for _, p := range prev {
+			if p.Domain == e.Domain && e.Nanojoules >= p.Nanojoules && secs > 0 {
+				out[i].Watts = ptr(float64(e.Nanojoules-p.Nanojoules) / 1e9 / secs)
+			}
+		}
+	}
+	return out
 }
 
 // rate is the per-second change in a cumulative counter, or nil when it can't

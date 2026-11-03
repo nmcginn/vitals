@@ -15,8 +15,8 @@ type Build struct {
 }
 
 // groups are every group vitals_collector_error reports, in output order, so
-// a group that is fine reads 0 rather than vanishing. Darwin adds gpu, which
-// is no group at all elsewhere (decision 46).
+// a group that is fine reads 0 rather than vanishing. Darwin adds gpu and
+// power, which are no groups at all elsewhere (decisions 46, 48).
 var groups = []string{
 	collector.GroupHost, collector.GroupCPU, collector.GroupMemory,
 	collector.GroupDisks, collector.GroupNetwork, collector.GroupTemps,
@@ -65,6 +65,16 @@ func Prom(s *sampler.Snapshot, b Build) []byte {
 
 	if d := s.Darwin; d != nil && d.GPU != nil {
 		w.family("vitals_gpu_utilization_ratio", "gauge", "Busy share of the GPU, 0 to 1, as the driver reports it.").ratio(&d.GPU.UtilizationPct)
+	}
+	if d := s.Darwin; d != nil {
+		watts := w.family("vitals_power_watts", "gauge", "Power drawn by the domain since the last sample, from IOReport's energy counters.")
+		joules := w.family("vitals_energy_joules_total", "counter", "Energy used by the domain, as IOReport counts it.")
+		for _, p := range d.Power {
+			watts.rate(p.Watts, "domain", p.Domain)
+			// Plain decimals: the counter passes 10⁶ J within days, where
+			// floatStr would switch to an exponent.
+			joules.add(strconv.FormatFloat(p.EnergyJoules, 'f', -1, 64), "domain", p.Domain)
+		}
 	}
 
 	if m := s.Memory; m != nil {
@@ -136,8 +146,10 @@ func Prom(s *sampler.Snapshot, b Build) []byte {
 		errs.add(boolStr(failed), "group", g)
 	}
 	if s.Darwin != nil {
-		_, failed := s.Errors[collector.GroupGPU]
-		errs.add(boolStr(failed), "group", collector.GroupGPU)
+		for _, g := range []string{collector.GroupGPU, collector.GroupPower} {
+			_, failed := s.Errors[g]
+			errs.add(boolStr(failed), "group", g)
+		}
 	}
 	return w.bytes()
 }

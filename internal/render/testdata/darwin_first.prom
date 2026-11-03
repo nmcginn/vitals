@@ -30,6 +30,11 @@ vitals_cpu_core_info{cpu="9",kind="E"} 1
 # HELP vitals_gpu_utilization_ratio Busy share of the GPU, 0 to 1, as the driver reports it.
 # TYPE vitals_gpu_utilization_ratio gauge
 vitals_gpu_utilization_ratio 0.23
+# HELP vitals_energy_joules_total Energy used by the domain, as IOReport counts it.
+# TYPE vitals_energy_joules_total counter
+vitals_energy_joules_total{domain="cpu"} 1234567.891
+vitals_energy_joules_total{domain="gpu"} 45678.901234
+vitals_energy_joules_total{domain="ane"} 321
 # HELP vitals_memory_total_bytes Physical memory.
 # TYPE vitals_memory_total_bytes gauge
 vitals_memory_total_bytes 17179869184
@@ -97,3 +102,4 @@ vitals_collector_error{group="disks"} 0
 vitals_collector_error{group="network"} 0
 vitals_collector_error{group="temps"} 0
 vitals_collector_error{group="gpu"} 0
+vitals_collector_error{group="power"} 0

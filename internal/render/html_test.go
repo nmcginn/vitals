@@ -220,6 +220,51 @@ func TestHTMLContent(t *testing.T) {
 		}
 	})
 
+	t.Run("darwin has a power card with the total, each domain, and a sparkline, and linux has none", func(t *testing.T) {
+		// html/template writes "+" as "&#43;", which a browser shows as "+".
+		s := darwinFull()
+		page := mustHTML(t, s, historyOf(s, 60), Page{})
+		for _, want := range []string{
+			`<h2 id="power">Power</h2>`,
+			`<span class="big num">2.31` + "\u00a0" + `W</span> <span class="of">CPU &#43; GPU &#43; ANE</span>`,
+			"<title>CPU &#43; GPU &#43; ANE power over the last 2 min, peak ",
+			`<dt>CPU</dt><dd class="num">1.88` + "\u00a0" + `W</dd>`,
+			`<dt>ANE</dt><dd class="num">0.00` + "\u00a0" + `W</dd>`,
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("page lacks %q", want)
+			}
+		}
+		if page := mustHTML(t, linuxPartial(), nil, Page{}); strings.Contains(page, "Power") {
+			t.Error("linux page has a power card")
+		}
+	})
+
+	t.Run("unknown watts are —, and so is a total missing any domain", func(t *testing.T) {
+		page := mustHTML(t, darwinFirst(), nil, Page{})
+		for _, want := range []string{
+			`<span class="big num">—</span> <span class="of">CPU &#43; GPU &#43; ANE</span>`,
+			`<dt>GPU</dt><dd class="num">—</dd>`,
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("page lacks %q", want)
+			}
+		}
+		s := darwinFull()
+		s.Darwin.Power[2].Watts = nil
+		if page := mustHTML(t, s, nil, Page{}); !strings.Contains(page, `<span class="big num">—</span> <span class="of">CPU &#43; GPU &#43; ANE</span>`) {
+			t.Error("a total missing the ANE isn't —")
+		}
+	})
+
+	t.Run("a failed power group's card says why and shows no figures", func(t *testing.T) {
+		page := mustHTML(t, darwinErrors(), nil, Page{})
+		want := `<h2 id="power">Power</h2></summary>` + "\n" + `<p class="error">Power unavailable: the private IOReport function IOReportCreateSamples is missing from this macOS; check for a newer vitals</p>` + "\n</details>"
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	})
+
 	t.Run("a GPU card with no reading and no error shows —, not 0", func(t *testing.T) {
 		s := darwinFull()
 		s.Darwin.GPU = nil
@@ -454,6 +499,10 @@ func TestHumanize(t *testing.T) {
 		{humanPPS(p(21.4)), "21 pkt/s"},
 		{humanPct(nil), "—"},
 		{humanPct(p(6.25)), "6.2%"},
+		{humanWatts(nil), "—"},
+		{humanWatts(p(0.0)), "0.00 W"},
+		{humanWatts(p(1.875)), "1.88 W"},
+		{humanWatts(p(42.5)), "42.50 W"},
 		{duration(864000e9), "10d 0h"},
 		{duration(3*3600e9 + 12*60e9 + 5e9), "3h 12m"},
 		{duration(4*60e9 + 10e9), "4m 10s"},

@@ -354,7 +354,7 @@ func TestDarwinGroups(t *testing.T) {
 		raw := full(1)
 		raw.GPU = &collector.GPU{UtilizationPct: 37}
 		b, _ := json.Marshal(one(raw))
-		if !strings.Contains(string(b), `"darwin":{"gpu":{"utilization_pct":37}}`) {
+		if !strings.Contains(string(b), `"darwin":{"gpu":{"utilization_pct":37},`) {
 			t.Errorf("got %s, want darwin.gpu.utilization_pct 37", b)
 		}
 	})
@@ -364,7 +364,7 @@ func TestDarwinGroups(t *testing.T) {
 		raw.Errors = map[string]error{collector.GroupGPU: errors.New("the IORegistry lists no IOAccelerator, so there is no GPU to read")}
 		snap := one(raw)
 		b, _ := json.Marshal(snap)
-		if !strings.Contains(string(b), `"darwin":{"gpu":null}`) {
+		if !strings.Contains(string(b), `"darwin":{"gpu":null,`) {
 			t.Errorf("got %s, want darwin.gpu null", b)
 		}
 		if snap.Errors["gpu"] == "" {
@@ -372,6 +372,105 @@ func TestDarwinGroups(t *testing.T) {
 		}
 		if snap.CPU == nil || snap.Memory == nil || len(snap.Disks) != 1 || len(snap.Network) != 1 {
 			t.Errorf("other groups missing: %+v", snap)
+		}
+	})
+
+	energy := func(seed collector.Raw, cpu, gpu, ane uint64) collector.Raw {
+		seed.Power = []collector.Energy{{Domain: "cpu", Nanojoules: cpu}, {Domain: "gpu", Nanojoules: gpu}, {Domain: "ane", Nanojoules: ane}}
+		return seed
+	}
+	two := func(gap time.Duration, steps ...step) *Snapshot {
+		s, store, now, _ := harness(t, 2*time.Second, steps...)
+		s.tick(ctx)
+		for range steps[1:] {
+			*now = now.Add(gap)
+			s.tick(ctx)
+		}
+		return store.Latest()
+	}
+
+	t.Run("power is null watts and the counter in joules on the first sample", func(t *testing.T) {
+		b, _ := json.Marshal(one(energy(full(1), 5e9, 25e8, 0)))
+		want := `"power":[{"domain":"cpu","power_w":null,"energy_j":5},{"domain":"gpu","power_w":null,"energy_j":2.5},{"domain":"ane","power_w":null,"energy_j":0}]`
+		if !strings.Contains(string(b), want) {
+			t.Errorf("got %s, want %s", b, want)
+		}
+	})
+
+	t.Run("watts are the energy delta over the actual elapsed time, not the interval", func(t *testing.T) {
+		snap := two(2500*time.Millisecond, step{raw: energy(full(1), 10e9, 1e9, 0)}, step{raw: energy(full(2), 15e9, 1.5e9, 0)})
+		for i, want := range []float64{2, 0.2, 0} {
+			if got := snap.Darwin.Power[i].Watts; got == nil || *got != want {
+				t.Errorf("%s = %s W, want %v", snap.Darwin.Power[i].Domain, f64(got), want)
+			}
+		}
+	})
+
+	t.Run("a skipped tick's watts divide by the whole gap since the last published sample", func(t *testing.T) {
+		snap := two(2*time.Second, step{raw: energy(full(1), 0, 0, 0)}, step{block: true}, step{raw: energy(full(2), 12e9, 0, 0)})
+		if got := snap.Darwin.Power[0].Watts; got == nil || *got != 3 {
+			t.Errorf("cpu = %s W, want 12 J ÷ 4 s = 3", f64(got))
+		}
+	})
+
+	t.Run("watts are null when a domain's counter goes backwards, never negative", func(t *testing.T) {
+		snap := two(2*time.Second, step{raw: energy(full(1), 9e9, 1e9, 1e9)}, step{raw: energy(full(2), 1e9, 3e9, 1e9)})
+		if got := snap.Darwin.Power[0].Watts; got != nil {
+			t.Errorf("cpu = %s W after its counter went backwards, want null", f64(got))
+		}
+		if got := snap.Darwin.Power[1].Watts; got == nil || *got != 1 {
+			t.Errorf("gpu = %s W, want 1: one domain's reset leaves the others alone", f64(got))
+		}
+	})
+
+	t.Run("watts are null when the clock didn't move", func(t *testing.T) {
+		snap := two(0, step{raw: energy(full(1), 0, 0, 0)}, step{raw: energy(full(2), 1e9, 1e9, 1e9)})
+		for _, p := range snap.Darwin.Power {
+			if p.Watts != nil {
+				t.Errorf("%s = %s W with zero elapsed time, want null", p.Domain, f64(p.Watts))
+			}
+		}
+	})
+
+	t.Run("a domain that first appears has null watts", func(t *testing.T) {
+		first := full(1)
+		first.Power = []collector.Energy{{Domain: "cpu", Nanojoules: 0}}
+		snap := two(2*time.Second, step{raw: first}, step{raw: energy(full(2), 2e9, 2e9, 2e9)})
+		if got := snap.Darwin.Power[0].Watts; got == nil || *got != 1 {
+			t.Errorf("cpu = %s W, want 1", f64(got))
+		}
+		if snap.Darwin.Power[1].Watts != nil || snap.Darwin.Power[2].Watts != nil {
+			t.Errorf("new gpu = %s W, ane = %s W, want null", f64(snap.Darwin.Power[1].Watts), f64(snap.Darwin.Power[2].Watts))
+		}
+	})
+
+	t.Run("watts after a failed power sample are null, not a rate across the failure", func(t *testing.T) {
+		failed := full(2)
+		failed.Errors = map[string]error{collector.GroupPower: errors.New("IOReportCreateSamples gave no Energy Model sample")}
+		snap := two(2*time.Second, step{raw: energy(full(1), 0, 0, 0)}, step{raw: failed}, step{raw: energy(full(3), 4e9, 0, 0)})
+		if got := snap.Darwin.Power[0].Watts; got != nil {
+			t.Errorf("cpu = %s W, want null on the sample after the group failed", f64(got))
+		}
+	})
+
+	t.Run("energy past 2³² nanojoules keeps counting, and watts stay exact", func(t *testing.T) {
+		snap := two(2*time.Second, step{raw: energy(full(1), 1<<32-1e6, 0, 0)}, step{raw: energy(full(2), 1<<32+3e9-1e6, 0, 0)})
+		if got := snap.Darwin.Power[0].Watts; got == nil || *got != 1.5 {
+			t.Errorf("cpu = %s W, want 3 J ÷ 2 s = 1.5", f64(got))
+		}
+	})
+
+	t.Run("a failed power group is darwin.power null with its error, and the other groups are served", func(t *testing.T) {
+		raw := full(1)
+		raw.GPU = &collector.GPU{UtilizationPct: 5}
+		raw.Errors = map[string]error{collector.GroupPower: errors.New("IOReport lists no Energy Model channels on this Mac")}
+		snap := one(raw)
+		b, _ := json.Marshal(snap)
+		if !strings.Contains(string(b), `"darwin":{"gpu":{"utilization_pct":5},"power":null}`) {
+			t.Errorf("got %s, want darwin.power null beside the GPU", b)
+		}
+		if snap.Errors["power"] == "" || snap.CPU == nil || snap.Memory == nil {
+			t.Errorf("errors = %v, cpu %v, memory %v; want a power entry and the rest served", snap.Errors, snap.CPU, snap.Memory)
 		}
 	})
 
