@@ -27,6 +27,8 @@ var dashboardTmpl = template.Must(template.New("dashboard.tmpl").Funcs(template.
 	"mempct": func(m *collector.Memory) string { return humanPct(memPct(m)) },
 	"width":  barWidth,
 	"level":  barLevel,
+	"watts":  func(w *float64) string { return nbsp(humanWatts(w)) },
+	"upper":  strings.ToUpper,
 	"temp":   func(c float64) string { return strconv.FormatFloat(c, 'f', 1, 64) + " °C" },
 	"load":   func(l [3]float64) string { return fmt.Sprintf("%.2f %.2f %.2f", l[0], l[1], l[2]) },
 }).ParseFS(assets, "assets/dashboard.tmpl"))
@@ -94,6 +96,10 @@ func HTML(s *sampler.Snapshot, history []*sampler.Snapshot, p Page) ([]byte, err
 	if s.Darwin != nil {
 		v.GPUNow = gpuNow(s)
 		v.GPUSpark = spark{Path: sparkPath(gpuSeries(history), 100), Title: v.title("GPU usage", "now "+humanPct(v.GPUNow))}
+		v.PowerNow, v.PowerOf = powerNow(s), powerOf(s.Darwin.Power)
+		pw := powerSeries(history)
+		top := peak(pw)
+		v.PowerSpark = spark{Path: sparkPath(pw, top), Title: v.title(v.PowerOf+" power", "peak "+humanWatts(&top))}
 	}
 	mem := memSeries(history)
 	v.MemSpark = spark{Path: sparkPath(mem, 100), Title: v.title("Memory used", "now "+humanPct(memPct(s.Memory)))}
@@ -130,6 +136,9 @@ type dashboard struct {
 	CPUSpark    spark
 	GPUNow      *float64 // darwin only
 	GPUSpark    spark
+	PowerNow    *float64 // darwin only: every domain's watts together
+	PowerOf     string   // the domains PowerNow adds up: "CPU + GPU + ANE"
+	PowerSpark  spark
 	MemSpark    spark
 	Network     []sampler.Interface // S.Network without its idle interfaces
 	NetSparks   []netSpark          // one per Network entry, in the same order
@@ -221,6 +230,41 @@ func gpuNow(s *sampler.Snapshot) *float64 {
 	return &s.Darwin.GPU.UtilizationPct
 }
 
+// powerNow is the sum of every domain's watts, nil off darwin, when the group
+// failed, or when any domain's watts are unknown: a total missing a domain
+// would read as a drop in power.
+func powerNow(s *sampler.Snapshot) *float64 {
+	if w := powerSum(s); !math.IsNaN(w) {
+		return &w
+	}
+	return nil
+}
+
+// powerSum is powerNow as a value, NaN when unknown, for the sparkline.
+func powerSum(s *sampler.Snapshot) float64 {
+	if s.Darwin == nil || s.Darwin.Power == nil {
+		return math.NaN()
+	}
+	sum := 0.0
+	for _, p := range s.Darwin.Power {
+		if p.Watts == nil {
+			return math.NaN()
+		}
+		sum += *p.Watts
+	}
+	return sum
+}
+
+// powerOf names the domains a power total adds up, so the figure isn't taken
+// for the whole machine's draw from the wall.
+func powerOf(ps []sampler.Power) string {
+	names := make([]string, len(ps))
+	for i, p := range ps {
+		names[i] = strings.ToUpper(p.Domain)
+	}
+	return strings.Join(names, " + ")
+}
+
 // memPct is used memory as a percentage of total, nil when unknown.
 func memPct(m *collector.Memory) *float64 {
 	if pct := memUsedPct(m); !math.IsNaN(pct) {
@@ -247,6 +291,10 @@ func cpuSeries(h []*sampler.Snapshot) series {
 
 func gpuSeries(h []*sampler.Snapshot) series {
 	return downsample(len(h), func(i int) float64 { return known(gpuNow(h[i])) })
+}
+
+func powerSeries(h []*sampler.Snapshot) series {
+	return downsample(len(h), func(i int) float64 { return powerSum(h[i]) })
 }
 
 func memSeries(h []*sampler.Snapshot) series {
@@ -345,6 +393,15 @@ func humanPct(pct *float64) string {
 		return "—"
 	}
 	return strconv.FormatFloat(*pct, 'f', 1, 64) + "%"
+}
+
+// humanWatts has two decimal places, enough to tell an idle core's tenths of
+// a watt apart, or "—" when the draw can't be known.
+func humanWatts(w *float64) string {
+	if w == nil {
+		return "—"
+	}
+	return strconv.FormatFloat(*w, 'f', 2, 64) + " W"
 }
 
 // barWidth is a bar's CSS width in percent, clamped so a bad value can't draw

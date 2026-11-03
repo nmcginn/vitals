@@ -8,6 +8,9 @@ Memory unavailable: host_statistics64: (os/kern) failure
 GPU unavailable: the IORegistry lists no IOAccelerator, so there is no GPU to
   read
 
+Power unavailable: the private IOReport function IOReportCreateSamples is
+  missing from this macOS; check for a newer vitals
+
 Disks
   statfs "/Volumes/Backup": input/output error
   MOUNT       USED       SIZE   USE%         READ        WRITE

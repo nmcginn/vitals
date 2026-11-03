@@ -174,6 +174,7 @@ section:has(details:not([open])) { align-self: start; }
 :root[data-closed~="cpu"] [data-card="cpu"] > :not(summary),
 :root[data-closed~="memory"] [data-card="memory"] > :not(summary),
 :root[data-closed~="gpu"] [data-card="gpu"] > :not(summary),
+:root[data-closed~="power"] [data-card="power"] > :not(summary),
 :root[data-closed~="disks"] [data-card="disks"] > :not(summary),
 :root[data-closed~="network"] [data-card="network"] > :not(summary),
 :root[data-closed~="temps"] [data-card="temps"] > :not(summary) { display: none; }
@@ -293,6 +294,17 @@ section:has(details:not([open])) { align-self: start; }
 <details data-card="gpu" open>
 <summary><h2 id="gpu">GPU</h2></summary>
 <div class="now"><span class="big num">23.0%</span><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>GPU usage over the last 58 s, now 23.0%</title><path d="M0 31L4.1 24.1L8.3 17.2L12.4 10.3L16.6 3.4L20.7 26.5L24.8 19.6L29 12.7L33.1 5.8L37.2 28.9L41.4 22L45.5 15.1L49.7 8.2L53.8 1.3L57.9 24.4L62.1 17.5L66.2 10.6L70.3 3.7L74.5 26.8L78.6 19.9L82.8 13L86.9 6.1L91 29.2L95.2 22.3L99.3 15.4L103.4 8.5L107.6 1.6L111.7 24.7L115.9 17.8L120 24.1"/></svg></div>
+</details>
+</section>
+<section aria-labelledby="power">
+<details data-card="power" open>
+<summary><h2 id="power">Power</h2></summary>
+<div class="now"><span class="big num">2.31 W</span> <span class="of">CPU &#43; GPU &#43; ANE</span><svg viewBox="0 0 120 32" preserveAspectRatio="none" role="img"><title>CPU &#43; GPU &#43; ANE power over the last 58 s, peak 23.25 W</title><path d="M4.1 13.6L8.3 1L12.4 14.2L16.6 14.5L20.7 2L24.8 15.2L29 15.5L33.1 2.9L37.2 16.2L41.4 16.5L45.5 3.9L49.7 17.1L53.8 17.5L57.9 4.9L62.1 18.1L66.2 18.4L70.3 5.8L74.5 6.2L78.6 19.4L82.8 6.8L86.9 7.1L91 20.4L95.2 7.8L99.3 8.1L103.4 21.3L107.6 8.7L111.7 9.1L115.9 22.3L120 28"/></svg></div>
+<dl>
+<dt>CPU</dt><dd class="num">1.88 W</dd>
+<dt>GPU</dt><dd class="num">0.44 W</dd>
+<dt>ANE</dt><dd class="num">0.00 W</dd>
+</dl>
 </details>
 </section>
 <section aria-labelledby="disks">

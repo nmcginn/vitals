@@ -227,4 +227,68 @@ func TestDarwinCollect(t *testing.T) {
 			t.Errorf("the temps group took others down with it: %+v", raw.Errors)
 		}
 	})
+	t.Run("power is cumulative CPU, GPU, and ANE energy that never goes backwards, or fails saying why, as on a CI VM", func(t *testing.T) {
+		// A VM may have no Energy Model channels, so a failed group passes as
+		// long as it says why and the rest were served. Every channel is
+		// logged, so `go test -v -run TestDarwinCollect` on a Mac shows what
+		// decision 48's mapping had to choose from, units included.
+		d := c.(*darwin)
+		if d.powerErr == nil {
+			n, cs := d.energyChannels()
+			t.Logf("%d IOReport Energy Model channels", n)
+			for _, ch := range cs {
+				t.Logf("  %q / %q: %d %q", ch.Group, ch.Name, ch.Value, ch.Unit)
+			}
+		}
+		first, err := c.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(1100 * time.Millisecond)
+		second, err := c.Collect(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, raw := range []Raw{first, second} {
+			perr := raw.Errors[GroupPower]
+			switch {
+			case raw.Power != nil && perr != nil:
+				t.Errorf("collection %d: power is %+v and failed with %v; want one or the other", i+1, raw.Power, perr)
+			case raw.Power == nil && perr == nil:
+				t.Errorf("collection %d: power is nil without an error", i+1)
+			case perr != nil:
+				t.Logf("collection %d: no power reading: %v", i+1, perr)
+			}
+			for _, e := range raw.Power {
+				if e.Domain != "cpu" && e.Domain != "gpu" && e.Domain != "ane" {
+					t.Errorf("collection %d: domain %q, want cpu, gpu, or ane", i+1, e.Domain)
+				}
+			}
+			if raw.CPU == nil || raw.Memory == nil || raw.Host == nil {
+				t.Errorf("collection %d: the power group took others down with it: %+v", i+1, raw.Errors)
+			}
+		}
+		before := map[string]uint64{}
+		for _, e := range first.Power {
+			before[e.Domain] = e.Nanojoules
+		}
+		secs := 1.1
+		for _, e := range second.Power {
+			a, ok := before[e.Domain]
+			if !ok {
+				continue
+			}
+			if e.Nanojoules < a {
+				t.Errorf("%s energy went backwards: %d then %d nJ", e.Domain, a, e.Nanojoules)
+				continue
+			}
+			// A Mac Mini draws well under 200 W from its SoC; anything above
+			// that is a unit read wrong by a factor of 1000.
+			if w := float64(e.Nanojoules-a) / 1e9 / secs; w > 200 {
+				t.Errorf("%s drew %.1f W over %.1f s, more than a Mac's SoC can; is a unit wrong?", e.Domain, w, secs)
+			} else {
+				t.Logf("%s: about %.3f W", e.Domain, w)
+			}
+		}
+	})
 }

@@ -15,7 +15,8 @@ const (
 	GroupDisks   = "disks"
 	GroupNetwork = "network"
 	GroupTemps   = "temps"
-	GroupGPU     = "gpu" // darwin only
+	GroupGPU     = "gpu"   // darwin only
+	GroupPower   = "power" // darwin only
 )
 
 // unknownModel is HostInfo.CPUModel when the OS doesn't name the CPU.
@@ -52,8 +53,9 @@ type Raw struct {
 	Memory  *Memory
 	Disks   []Disk
 	Network []Interface
-	Temps   []Temp // nil or empty when the machine has no sensors
-	GPU     *GPU   // darwin only
+	Temps   []Temp   // nil or empty when the machine has no sensors
+	GPU     *GPU     // darwin only
+	Power   []Energy // darwin only
 	Errors  map[string]error
 }
 
@@ -132,6 +134,15 @@ type Interface struct {
 // IOAccelerator's "Device Utilization %", 0 to 100 (decision 46).
 type GPU struct {
 	UtilizationPct float64 `json:"utilization_pct"`
+}
+
+// Energy is one power domain's cumulative energy counter, in nanojoules, from
+// IOReport's Energy Model (decision 48). Domain is "cpu", "gpu", or "ane". The
+// counter's starting point is the kernel's, so only its increase means
+// anything: the sampler turns that into watts.
+type Energy struct {
+	Domain     string
+	Nanojoules uint64
 }
 
 type Temp struct {

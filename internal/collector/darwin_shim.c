@@ -478,3 +478,97 @@ int vitals_temps(struct vitals_temp *out, int max) {
 	CFRelease(services);
 	return n;
 }
+
+// Private IOReport, the one route to the SoC's energy counters without root
+// (decision 44). No header declares it, so the prototypes are written out
+// here as macmon declares them, every object as a CFTypeRef or dictionary. It
+// is resolved once with dlsym, never linked, so a macOS that drops a function
+// fails the power group instead of the whole binary at launch.
+typedef CFDictionaryRef (*ior_copy_channels_in_group_fn)(CFStringRef group, CFStringRef subgroup, uint64_t a, uint64_t b, uint64_t c);
+typedef CFTypeRef (*ior_create_subscription_fn)(const void *a, CFMutableDictionaryRef channels, CFMutableDictionaryRef *subscribed, uint64_t id, CFTypeRef b);
+typedef CFDictionaryRef (*ior_create_samples_fn)(CFTypeRef subscription, CFMutableDictionaryRef channels, CFTypeRef a);
+typedef CFStringRef (*ior_channel_string_fn)(CFDictionaryRef channel);
+typedef int64_t (*ior_simple_get_integer_fn)(CFDictionaryRef channel, int32_t index);
+
+static struct {
+	ior_create_samples_fn create_samples;
+	ior_channel_string_fn get_group;
+	ior_channel_string_fn get_name;
+	ior_channel_string_fn get_unit;
+	ior_simple_get_integer_fn get_integer;
+	CFTypeRef subscription;
+	CFMutableDictionaryRef channels;
+} ior;
+
+int vitals_power_open(char *missing, int size) {
+	missing[0] = '\0';
+	void *lib = dlopen("/usr/lib/libIOReport.dylib", RTLD_LAZY | RTLD_LOCAL);
+	if (lib == NULL) {
+		return -1;
+	}
+	ior_copy_channels_in_group_fn copy_channels = NULL;
+	ior_create_subscription_fn create_subscription = NULL;
+	if (resolve(lib, "IOReportCopyChannelsInGroup", &copy_channels, sizeof copy_channels, missing, size) != 0 ||
+	    resolve(lib, "IOReportCreateSubscription", &create_subscription, sizeof create_subscription, missing, size) != 0 ||
+	    resolve(lib, "IOReportCreateSamples", &ior.create_samples, sizeof ior.create_samples, missing, size) != 0 ||
+	    resolve(lib, "IOReportChannelGetGroup", &ior.get_group, sizeof ior.get_group, missing, size) != 0 ||
+	    resolve(lib, "IOReportChannelGetChannelName", &ior.get_name, sizeof ior.get_name, missing, size) != 0 ||
+	    resolve(lib, "IOReportChannelGetUnitLabel", &ior.get_unit, sizeof ior.get_unit, missing, size) != 0 ||
+	    resolve(lib, "IOReportSimpleGetIntegerValue", &ior.get_integer, sizeof ior.get_integer, missing, size) != 0) {
+		return -2;
+	}
+	// The handle stays open: the function pointers live as long as it does.
+	CFDictionaryRef found = copy_channels(CFSTR("Energy Model"), NULL, 0, 0, 0);
+	if (found == NULL) {
+		return -3;
+	}
+	// The subscription wants a mutable dictionary, and each sample is taken
+	// against it, so the copy is kept for the life of the process.
+	CFMutableDictionaryRef channels = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, CFDictionaryGetCount(found), found);
+	CFRelease(found);
+	if (channels == NULL) {
+		return -4;
+	}
+	// subscribed is the subscription's own copy of the channels. Like macmon,
+	// nothing reads it, and it is created once, so it is left alone rather
+	// than released on a guess about who owns it.
+	CFMutableDictionaryRef subscribed = NULL;
+	CFTypeRef subscription = create_subscription(NULL, channels, &subscribed, 0, NULL);
+	if (subscription == NULL) {
+		CFRelease(channels);
+		return -4;
+	}
+	ior.subscription = subscription;
+	ior.channels = channels;
+	return 0;
+}
+
+// The channel accessors follow the get rule, so their strings aren't released.
+static void copy_cfstr(CFStringRef s, char *buf, size_t size) {
+	if (s == NULL || CFGetTypeID(s) != CFStringGetTypeID() ||
+	    !CFStringGetCString(s, buf, (CFIndex)size, kCFStringEncodingUTF8)) {
+		buf[0] = '\0';
+	}
+}
+
+int vitals_power(struct vitals_energy *out, int max) {
+	CFDictionaryRef sample = ior.create_samples(ior.subscription, ior.channels, NULL);
+	if (sample == NULL) {
+		return -1;
+	}
+	CFTypeRef items = CFDictionaryGetValue(sample, CFSTR("IOReportChannels"));
+	if (items == NULL || CFGetTypeID(items) != CFArrayGetTypeID()) {
+		CFRelease(sample);
+		return -1;
+	}
+	int n = (int)CFArrayGetCount((CFArrayRef)items);
+	for (int i = 0; i < n && i < max; i++) {
+		CFDictionaryRef channel = (CFDictionaryRef)CFArrayGetValueAtIndex((CFArrayRef)items, i);
+		copy_cfstr(ior.get_group(channel), out[i].group, sizeof out[i].group);
+		copy_cfstr(ior.get_name(channel), out[i].name, sizeof out[i].name);
+		copy_cfstr(ior.get_unit(channel), out[i].unit, sizeof out[i].unit);
+		out[i].value = ior.get_integer(channel, 0);
+	}
+	CFRelease(sample);
+	return n;
+}

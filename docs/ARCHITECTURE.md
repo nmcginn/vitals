@@ -2,7 +2,7 @@
 
 ## Shape
 
-*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h` (with the IOHID temperatures through `dlopen`), `darwin_conv.go`, `linux.go`, `procfs.go` (host, CPU, memory, network, disks, and temperatures), `filter.go` (disks and interfaces), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/`, `/healthz`, `/api/v1/stats`, `/api/v1/history`, `/metrics`) and `negotiate.go`, `render/json.go` (`JSON`, `History`), `render/prom.go` (`Prom`), `render/text.go` (`Text`), `render/shown.go` (which interfaces the human formats list), and `render/html.go`, `sparkline.go`, and `assets/` (the dashboard), and `contrib/` (`com.vitals.plist`, `vitals.service`, `soak.sh`). Everything in the shape below is built. Update in every PR that adds, moves, or removes a module.*
+*Intended, with these as-built: `main.go`, `Makefile`, `collector.go`, `darwin.go`, `nocgo_darwin.go`, `darwin_shim.c/.h` (with the IOHID temperatures and IOReport energy counters through `dlopen`), `darwin_conv.go`, `linux.go`, `procfs.go` (host, CPU, memory, network, disks, and temperatures), `filter.go` (disks and interfaces), `internal/sampler/` (`sampler.go`, `snapshot.go`, `store.go`), `internal/server/server.go` (`/`, `/healthz`, `/api/v1/stats`, `/api/v1/history`, `/metrics`) and `negotiate.go`, `render/json.go` (`JSON`, `History`), `render/prom.go` (`Prom`), `render/text.go` (`Text`), `render/shown.go` (which interfaces the human formats list), and `render/html.go`, `sparkline.go`, and `assets/` (the dashboard), and `contrib/` (`com.vitals.plist`, `vitals.service`, `soak.sh`). Everything in the shape below is built. Update in every PR that adds, moves, or removes a module.*
 
 The complete JSON shape is fixed by the golden file [`internal/render/testdata/darwin_full.json`](../internal/render/testdata/darwin_full.json) (decision 13).
 
@@ -63,6 +63,6 @@ Run `make check`. The suite needs no credentials and no network, and that is a p
 - Collectors return per-group errors inside `Raw`. A group failure never fails the whole sample. `Collect` returns a non-nil error only when nothing at all could be collected.
 - The sampler copies group errors into `Snapshot.Errors` (`map[group]string`), and logs each failing group at most once per minute via `slog`.
 - Messages say what failed and where: `memory: reading /proc/meminfo: MemAvailable missing (kernel older than 3.14?)`. They never contain environment variables, usernames, or command lines.
-- Darwin-only groups (`gpu`, decision 46) sit in `Snapshot.Darwin`, which the sampler sets only when `HostInfo.OS` is darwin, so Linux output has no trace of them.
+- Darwin-only groups (`gpu` and `power`, decisions 46 and 48) sit in `Snapshot.Darwin`, which the sampler sets only when `HostInfo.OS` is darwin, so Linux output has no trace of them.
 - Renderers show errors in place. JSON has `errors`, the dashboard's card for the failing group says what failed, Prometheus sets `vitals_collector_error{group}`, and text prints a line.
 - Startup errors (a bad flag, a failed listen) exit with a message naming the flag or address. Bad flags exit with status 2.

@@ -35,6 +35,7 @@ func Text(s *sampler.Snapshot) []byte {
 	w.cpu(s)
 	w.memory(s)
 	w.gpu(s)
+	w.power(s)
 	w.disks(s)
 	w.network(s)
 	w.temps(s)
@@ -95,6 +96,24 @@ func (w *textWriter) gpu(s *sampler.Snapshot) {
 		return
 	}
 	w.line("GPU " + humanPct(gpuNow(s)))
+}
+
+// power is a darwin group too: the total, then each domain's share.
+func (w *textWriter) power(s *sampler.Snapshot) {
+	d := s.Darwin
+	if d == nil {
+		return
+	}
+	w.blank()
+	if d.Power == nil {
+		w.problem("", "Power unavailable: ", s.Errors["power"])
+		return
+	}
+	items := []string{"Power " + humanWatts(powerNow(s)) + " (" + powerOf(d.Power) + ")"}
+	for _, p := range d.Power {
+		items = append(items, strings.ToUpper(p.Domain)+" "+humanWatts(p.Watts))
+	}
+	w.flow("", "  ", " · ", items...)
 }
 
 func (w *textWriter) memory(s *sampler.Snapshot) {

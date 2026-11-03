@@ -526,3 +526,131 @@ func TestHIDOpenError(t *testing.T) {
 		})
 	}
 }
+
+// m1Energy is shaped after an M1's Energy Model as macmon reads it: per-core
+// and per-cluster CPU channels that "CPU Energy" already totals, the GPU in
+// nanojoules beside everything else in millijoules, and channels Power leaves
+// out. Unit labels arrive padded on some releases.
+var m1Energy = []ioreportChannel{
+	{Group: "Energy Model", Name: "EACC_CPU0", Unit: "mJ", Value: 1_000},
+	{Group: "Energy Model", Name: "PACC0_CPU", Unit: "mJ", Value: 50_000},
+	{Group: "Energy Model", Name: "EACC_CPU", Unit: "mJ", Value: 20_000},
+	{Group: "Energy Model", Name: "CPU Energy", Unit: "mJ  ", Value: 123_456_789},
+	{Group: "Energy Model", Name: "GPU0", Unit: "mJ", Value: 9_999},
+	{Group: "Energy Model", Name: "GPU Energy", Unit: "nJ", Value: 45_678_901_234},
+	{Group: "Energy Model", Name: "ANE", Unit: "mJ", Value: 321},
+	{Group: "Energy Model", Name: "DRAM", Unit: "mJ", Value: 77_777},
+	{Group: "Energy Model", Name: "DISP", Unit: "mJ", Value: 888},
+}
+
+func TestPowerFromIOReport(t *testing.T) {
+	ultra := []ioreportChannel{
+		{Group: "Energy Model", Name: "DIE_0_CPU Energy", Unit: "mJ", Value: 1_000},
+		{Group: "Energy Model", Name: "DIE_1_CPU Energy", Unit: "uJ", Value: 2_000_000},
+		{Group: "Energy Model", Name: "GPU Energy", Unit: "mJ", Value: 5},
+		{Group: "Energy Model", Name: "ANE0_0", Unit: "mJ", Value: 7},
+		{Group: "Energy Model", Name: "ANE0_1", Unit: "µJ", Value: 3_000},
+	}
+	for _, tc := range []struct {
+		name string
+		n    int
+		cs   []ioreportChannel
+		want []Energy
+		err  string
+	}{
+		{"CPU, GPU, and ANE totals convert to nanojoules, and the other channels are left out",
+			len(m1Energy), m1Energy,
+			[]Energy{{"cpu", 123_456_789_000_000}, {"gpu", 45_678_901_234}, {"ane", 321_000_000}}, ""},
+		{"an Ultra's two dies and two ANEs are each summed, whatever unit each channel uses",
+			len(ultra), ultra,
+			[]Energy{{"cpu", 3_000_000_000}, {"gpu", 5_000_000}, {"ane", 10_000_000}}, ""},
+		{"a chip without an ANE channel reports CPU and GPU only",
+			2, []ioreportChannel{{Group: "Energy Model", Name: "CPU Energy", Unit: "mJ", Value: 1}, {Group: "Energy Model", Name: "GPU Energy", Unit: "mJ", Value: 2}},
+			[]Energy{{"cpu", 1_000_000}, {"gpu", 2_000_000}}, ""},
+		{"a counter at zero is a reading, not a missing domain",
+			1, []ioreportChannel{{Group: "Energy Model", Name: "ANE", Unit: "mJ", Value: 0}},
+			[]Energy{{"ane", 0}}, ""},
+		{"a channel from another group is left out even when its name matches",
+			2, []ioreportChannel{{Group: "CPU Stats", Name: "CPU Energy", Unit: "mJ", Value: 9}, {Group: "Energy Model", Name: "GPU Energy", Unit: "mJ", Value: 1}},
+			[]Energy{{"gpu", 1_000_000}}, ""},
+		{"GPU matches only by its whole name, so the per-GPU channels aren't counted twice",
+			2, []ioreportChannel{{Group: "Energy Model", Name: "GPU0", Unit: "mJ", Value: 9}, {Group: "Energy Model", Name: "GPU Energy", Unit: "mJ", Value: 1}},
+			[]Energy{{"gpu", 1_000_000}}, ""},
+		{"an unknown unit on a channel Power uses fails the group, naming the channel and unit",
+			1, []ioreportChannel{{Group: "Energy Model", Name: "CPU Energy", Unit: "kJ", Value: 1}},
+			nil, `IOReport channel "CPU Energy" counts energy in "kJ", a unit vitals doesn't know`},
+		{"an unknown unit on a channel Power leaves out is no problem",
+			2, []ioreportChannel{{Group: "Energy Model", Name: "DRAM", Unit: "", Value: 1}, {Group: "Energy Model", Name: "ANE", Unit: "nJ", Value: 4}},
+			[]Energy{{"ane", 4}}, ""},
+		{"a negative counter fails the group rather than shrinking the domain's total",
+			1, []ioreportChannel{{Group: "Energy Model", Name: "GPU Energy", Unit: "mJ", Value: -5}},
+			nil, `IOReport channel "GPU Energy" reads -5 mJ, below zero`},
+		{"a counter too large for 64-bit nanojoules fails the group rather than wrapping",
+			1, []ioreportChannel{{Group: "Energy Model", Name: "CPU Energy", Unit: "mJ", Value: math.MaxInt64}},
+			nil, `IOReport channel "CPU Energy" reads 9223372036854775807 mJ, too much energy to count in nanojoules`},
+		{"two channels summing to just under 2⁶⁴ nanojoules are counted exactly",
+			2, []ioreportChannel{{Group: "Energy Model", Name: "DIE_0_CPU Energy", Unit: "nJ", Value: math.MaxInt64}, {Group: "Energy Model", Name: "DIE_1_CPU Energy", Unit: "nJ", Value: math.MaxInt64}},
+			[]Energy{{"cpu", math.MaxInt64 * 2}}, ""},
+		{"no CPU, GPU, or ANE channel fails the group, so a renamed channel isn't a silent blank",
+			2, []ioreportChannel{{Group: "Energy Model", Name: "DRAM", Unit: "mJ", Value: 1}, {Group: "Energy Model", Name: "DISP", Unit: "mJ", Value: 1}},
+			nil, "none of the 2 IOReport Energy Model channels is CPU, GPU, or ANE energy"},
+		{"no channels at all fails the group", 0, nil,
+			nil, "none of the 0 IOReport Energy Model channels is CPU, GPU, or ANE energy"},
+		{"a failed sample fails the group", -1, nil,
+			nil, "IOReportCreateSamples gave no Energy Model sample"},
+		{"more channels than the shim holds fails the group",
+			257, make([]ioreportChannel, 256), nil, "IOReport lists 257 Energy Model channels, more than the shim's 256"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := powerFromIOReport(tc.n, tc.cs)
+			if tc.err == "" && err != nil || tc.err != "" && (err == nil || err.Error() != tc.err) {
+				t.Errorf("error %v, want %q", err, tc.err)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("a sum just past 2⁶⁴ nanojoules fails the group rather than wrapping", func(t *testing.T) {
+		cs := []ioreportChannel{
+			{Group: "Energy Model", Name: "DIE_0_CPU Energy", Unit: "nJ", Value: math.MaxInt64},
+			{Group: "Energy Model", Name: "DIE_1_CPU Energy", Unit: "nJ", Value: math.MaxInt64},
+			{Group: "Energy Model", Name: "DIE_2_CPU Energy", Unit: "nJ", Value: 2},
+		}
+		_, err := powerFromIOReport(len(cs), cs)
+		want := `IOReport channel "DIE_2_CPU Energy" reads 2 nJ, too much energy to count in nanojoules`
+		if err == nil || err.Error() != want {
+			t.Errorf("error %v, want %q", err, want)
+		}
+	})
+}
+
+func TestPowerOpenError(t *testing.T) {
+	t.Run("an opened subscription is no error", func(t *testing.T) {
+		if err := powerOpenError(0, ""); err != nil {
+			t.Errorf("err = %v", err)
+		}
+	})
+	for _, tc := range []struct {
+		name    string
+		rc      int
+		missing string
+		want    string
+	}{
+		{"a missing private symbol is named, so the error says what this macOS removed", -2, "IOReportCreateSamples",
+			"the private IOReport function IOReportCreateSamples is missing from this macOS; check for a newer vitals"},
+		{"libIOReport failing to open is an error, not a crash", -1, "",
+			"dlopen of /usr/lib/libIOReport.dylib failed, so the energy counters can't be reached"},
+		{"no Energy Model channels, as in a VM or on an Intel Mac, is an error", -3, "",
+			"IOReport lists no Energy Model channels on this Mac"},
+		{"a failed subscription is an error", -4, "",
+			"subscribing to IOReport's Energy Model channels failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := powerOpenError(tc.rc, tc.missing); err == nil || err.Error() != tc.want {
+				t.Errorf("err = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}

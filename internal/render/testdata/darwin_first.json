@@ -117,7 +117,24 @@
   "darwin": {
     "gpu": {
       "utilization_pct": 23
-    }
+    },
+    "power": [
+      {
+        "domain": "cpu",
+        "power_w": null,
+        "energy_j": 1234567.891
+      },
+      {
+        "domain": "gpu",
+        "power_w": null,
+        "energy_j": 45678.901234
+      },
+      {
+        "domain": "ane",
+        "power_w": null,
+        "energy_j": 321
+      }
+    ]
   },
   "errors": {}
 }

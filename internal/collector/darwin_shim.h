@@ -110,6 +110,17 @@ struct vitals_temp {
 	double celsius;    // the event's value, when has_event is 1
 };
 
+// More Energy Model channels than any Mac has; an M1 lists a few dozen.
+#define VITALS_MAX_ENERGY 256
+
+// One IOReport channel's sample: its names, unit, and integer value.
+struct vitals_energy {
+	char group[32]; // IOReportChannelGetGroup, e.g. "Energy Model"
+	char name[64];  // IOReportChannelGetChannelName, e.g. "CPU Energy"
+	char unit[16];  // IOReportChannelGetUnitLabel, e.g. "mJ"
+	int64_t value;  // IOReportSimpleGetIntegerValue(channel, 0)
+};
+
 void vitals_host_static(struct vitals_host_static *out);
 
 // Returns 0 on success, -1 if kern.boottime failed, -2 if vm.loadavg failed.
@@ -164,5 +175,18 @@ int vitals_temps_open(char *missing, int size);
 // of services, which may exceed max; 0 when the system lists none, as in a VM.
 // Only call it after vitals_temps_open returned 0.
 int vitals_temps(struct vitals_temp *out, int max);
+
+// Opens private IOReport once (decision 44): dlopen of libIOReport, dlsym of
+// each function the samples need, and one subscription to the "Energy Model"
+// group's channels. Returns 0, -1 if dlopen failed, -2 if a symbol is missing
+// (its name is copied into missing), -3 if there are no Energy Model channels,
+// or -4 if the subscription couldn't be created. Call it once, before
+// vitals_power.
+int vitals_power_open(char *missing, int size);
+
+// Samples the subscribed channels and copies up to max of them into out.
+// Returns the number of channels in the sample, which may exceed max, or -1
+// if no sample could be taken. Only call it after vitals_power_open returned 0.
+int vitals_power(struct vitals_energy *out, int max);
 
 #endif

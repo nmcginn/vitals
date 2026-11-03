@@ -14,9 +14,9 @@ Items marked *(maintainer)* in acceptance criteria are checks only the maintaine
 
 Update this at the end of every session.
 
-- Current: v1 is built, M14 (GPU utilisation) has merged, and M15 (SoC temperatures) is in review. What's left of v1 are the maintainer's checks on the Mini: the one-hour soak (M12), the launchd run (M11), and `curl` text output (M10).
-- Next up: M16, CPU, GPU, and ANE power on darwin.
-- Open PRs waiting on review: M15, SoC temperatures on darwin.
+- Current: v1 and v1.1 are built: M15 (SoC temperatures) has merged, and M16 (power) is in review. What's left are the maintainer's checks on the Mini: the one-hour soak (M12, now with power on), the launchd run (M11), `curl` text output (M10), temperatures (M15), and watts against macmon (M16).
+- Next up: nothing is scheduled; see **Open**.
+- Open PRs waiting on review: M16, CPU, GPU, and ANE power on darwin.
 
 ## Open questions for the maintainer
 
@@ -28,13 +28,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 
 ## Open
 
-### M16: CPU, GPU, and ANE power on darwin (v1.1)
-
-- [ ] **Watts per domain, from cumulative energy counters.**
-  *Needs:* M15 (the `dlopen` pattern).
-  IOReport's Energy Model channels, from `libIOReport.dylib` via `dlopen` per decision 44, with the subscription created once. The collector returns cumulative energy per domain (CPU, GPU, ANE) as raw counters. The sampler turns them into watts over the actual elapsed time, like every other rate. It's darwin-only, so it lives in the `"darwin"` sub-object, in a new `power` group with its own `errors` entry. Prometheus carries the cumulative counter and the rate, following PLAN's pattern for network bytes. Record the names in a decision.
-
-  *Acceptance:* sampler tests with a fake collector: the first sample is `null`, a counter that goes backwards is `null`, watts use the actual elapsed time, and a skipped tick still divides by the real gap. Conversion tests from captured channel values, covering unit scaling (mJ, µJ, nJ as IOReport reports them). A missing library or symbol is a `power` error, not a crash. Goldens for all four formats. `make budget` passes. *(maintainer)* `SOAK_MINUTES=60 make soak` on the Mini stays under 1% of one core with power on, and watts agree with macmon to within 10%.
+Nothing scheduled. The maintainer moves an idea below into **Open**, or adds a task, to schedule more.
 
 ---
 
@@ -56,6 +50,7 @@ Questions the loop could not answer without guessing at behaviour, architecture,
 - **M13: Idle interfaces.** `shownInterfaces` in `render/shown.go` drops interfaces with zero rx and tx totals from the dashboard and text, and JSON and Prometheus list every one (decision 41). *(maintainer)* the Mini's network card shows only the ports in use.
 - **M14: GPU utilisation.** The `gpu` group from the `IOAccelerator` `PerformanceStatistics` "Device Utilization %" through the shim, `darwin.gpu.utilization_pct` in JSON, `vitals_gpu_utilization_ratio`, a GPU card with a sparkline, and a `GPU` line in text (decision 46). *(maintainer)* it tracks Activity Monitor's GPU History under load.
 - **M15: SoC temperatures.** `vitals_temps_open`/`vitals_temps` in the shim through `dlopen` of IOKit's private IOHID event system, `tempsFromHID` aggregating macmon's CPU and GPU sensor names to `CPU mean`/`max` and `GPU mean`/`max` in `temps`, readings outside 0 to 150 °C dropped (decisions 45, 47). *(maintainer)* CPU and GPU agree with macmon on the Mini; see the open question.
+- **M16: Power.** `vitals_power_open`/`vitals_power` in the shim through `dlopen` of private IOReport's Energy Model channels, `powerFromIOReport` summing macmon's CPU, GPU, and ANE channels to nanojoule counters, watts over the actual elapsed time in `darwin.power`, `vitals_power_watts` and `vitals_energy_joules_total`, a Power card with a sparkline, and a `Power` line in text (decision 48). *(maintainer)* `SOAK_MINUTES=60 make soak` on the Mini stays under 1% of one core with power on, and watts agree with macmon to within 10%.
 
 ---
 
